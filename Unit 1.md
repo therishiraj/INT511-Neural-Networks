@@ -122,7 +122,7 @@ $$
 
 $$
 \tau_m \frac{dV(t)}{dt} = -\big(V(t)-V_{\text{rest}}\big) + R_m I(t),
-\qquad \text{fire \& reset if } V(t) \ge V_{\text{th}}
+\qquad \text{fire and reset if } V(t) \ge V_{\text{th}}
 $$
 
 with $\tau_m = R_m C_m \approx 10\text{–}20\ \text{ms}$. Integrating the linear ODE over a synaptic input current gives an exponentially-weighted sum of inputs — i.e. **a weighted sum followed by a threshold**, which is exactly the McCulloch–Pitts abstraction.
@@ -130,13 +130,15 @@ with $\tau_m = R_m C_m \approx 10\text{–}20\ \text{ms}$. Integrating the linea
 **Synaptic plasticity** — the biological substrate of "weights":
 - **LTP / LTD** (long-term potentiation/depression) modify synaptic efficacy $w_{ij}$.
 - **STDP** (spike-timing-dependent plasticity):
-$$
-\Delta w =
-\begin{cases}
-A_{+}\exp(-\Delta t/\tau_{+}), & \Delta t = t_{\text{post}} - t_{\text{pre}} > 0 \quad (\text{potentiation})\\[4pt]
--A_{-}\exp(\Delta t/\tau_{-}), & \Delta t < 0 \quad (\text{depression})
-\end{cases}
-$$
+
+  $$
+  \Delta w =
+  \begin{cases}
+  A_{+}\exp(-\Delta t/\tau_{+}), & \Delta t = t_{\text{post}} - t_{\text{pre}} > 0 \quad (\text{potentiation})\\[4pt]
+  -A_{-}\exp(\Delta t/\tau_{-}), & \Delta t < 0 \quad (\text{depression})
+  \end{cases}
+  $$
+
 This is the *causal, temporally asymmetric* refinement of Hebb's rule.
 
 ### 2.2 The artificial neuron (Perceptron unit / node)
@@ -428,9 +430,11 @@ Therefore $k\gamma \le \sqrt k R \Rightarrow \sqrt k \le R/\gamma \Rightarrow k 
 - **Why $\eta$ does not matter (with $\mathbf w_0 = \mathbf 0$):** scaling $\eta$ scales every $\mathbf w_k$ by $\eta$; the sign of $\mathbf w^{\mathsf T}\mathbf x$ is unchanged, so the *sequence of mistakes is identical*.
 - The bound depends on $\gamma$, the **geometric margin**; if data are barely separable ($\gamma\to0$), the bound explodes — connecting directly to the SVM idea of *maximising* $\gamma$.
 - **Non-separable case:** the algorithm never terminates. Fixes: pocket algorithm (keep best-so-far weights), averaged perceptron, or the Freund–Schapire bound
-$$
-k \le \left(\frac{2(R + D)}{\gamma}\right)^{2}, \quad D = \sqrt{\textstyle\sum_i \xi_i^2},\;\; \xi_i = \max(0,\gamma - d_i\mathbf w^{\star\mathsf T}\mathbf x_i).
-$$
+
+  $$
+  k \le \left(\frac{2(R + D)}{\gamma}\right)^{2}, \quad D = \sqrt{\textstyle\sum_i \xi_i^2},\;\; \xi_i = \max(0,\gamma - d_i\mathbf w^{\star\mathsf T}\mathbf x_i).
+  $$
+
 - The bound is **dimension-free** — a very early example of a margin-based generalisation guarantee.
 
 ### 6.4 Limitations of the single-layer perceptron
