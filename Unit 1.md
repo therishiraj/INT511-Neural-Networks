@@ -313,8 +313,8 @@ The fraction $\to 0$ **super-exponentially**: single-layer separability is a van
 ### 5.1 Model
 
 $$
-y = \operatorname{sgn}(v) = \operatorname{sgn}\!\big(\mathbf w^{\mathsf T}\mathbf x + b\big),\qquad
-\operatorname{sgn}(v)=\begin{cases}+1 & v\ge 0\\ -1 & v<0\end{cases}
+y = \mathrm{sgn}(v) = \mathrm{sgn}\!\big(\mathbf w^{\mathsf T}\mathbf x + b\big),\qquad
+\mathrm{sgn}(v)=\begin{cases}+1 & v\ge 0\\ -1 & v<0\end{cases}
 $$
 
 Difference from MP: **real-valued adjustable weights**, real-valued inputs, a learning algorithm, and a bias.
@@ -324,9 +324,9 @@ Difference from MP: **real-valued adjustable weights**, real-valued inputs, a le
 > **Algorithm (Rosenblatt, 1958)**
 > 1. Initialise $\mathbf w(0) = \mathbf 0$ (or small random), $t \leftarrow 0$, choose $\eta>0$.
 > 2. For each epoch, for each sample $(\mathbf x_i, d_i)$, $d_i\in\{+1,-1\}$:
->    a. $y_i(t) = \operatorname{sgn}(\mathbf w(t)^{\mathsf T}\mathbf x_i)$   *(bias absorbed)*
->    b. If $y_i(t) \ne d_i$: $\; \mathbf w(t+1) = \mathbf w(t) + \eta\, d_i\, \mathbf x_i$; $\;t\leftarrow t+1$
->    c. Else $\mathbf w(t+1) = \mathbf w(t)$ *(no update on correct classification)*
+> &nbsp;&nbsp;&nbsp;**a.** $y_i(t) = \mathrm{sgn}(\mathbf w(t)^{\mathsf T}\mathbf x_i)$   *(bias absorbed)*
+> &nbsp;&nbsp;&nbsp;**b.** If $y_i(t) \ne d_i$: $\; \mathbf w(t+1) = \mathbf w(t) + \eta\, d_i\, \mathbf x_i$; $\;t\leftarrow t+1$
+> &nbsp;&nbsp;&nbsp;**c.** Else $\mathbf w(t+1) = \mathbf w(t)$ *(no update on correct classification)*
 > 3. Repeat until an epoch passes with zero errors.
 
 Equivalent compact form: $\;\Delta\mathbf w = \tfrac{\eta}{2}\,(d_i - y_i)\,\mathbf x_i$, since $d_i-y_i \in\{0,\pm2\}$.
@@ -356,13 +356,13 @@ $\mathcal M$ = misclassified set. Indeed $\nabla_{\mathbf w} J_p = -\sum_{i\in\m
 | Perceptron | $\max(0,-z)$ | zero loss at $z=0^+$ → no margin guarantee |
 | SVM (hinge) | $\max(0, 1-z)$ | enforces margin ⇒ unique maximum-margin solution |
 | Logistic | $\log(1+e^{-z})$ | smooth, probabilistic |
-| ADALINE (LMS) | $\tfrac12 (d - \mathbf w^{\mathsf T}\mathbf x)^2$ | uses **linear** output, not $\operatorname{sgn}$ |
+| ADALINE (LMS) | $\tfrac12 (d - \mathbf w^{\mathsf T}\mathbf x)^2$ | uses **linear** output, not $\mathrm{sgn}$ |
 
 ### 5.4 Perceptron vs ADALINE (Widrow–Hoff)
 
 | | Perceptron | ADALINE |
 |---|---|---|
-| Error computed on | $\operatorname{sgn}(v)$ (post-activation) | $v$ (pre-activation) |
+| Error computed on | $\mathrm{sgn}(v)$ (post-activation) | $v$ (pre-activation) |
 | Update | $\eta(d-y)x$, $y=\pm1$ | $\eta(d-v)x$ |
 | Loss | Perceptron criterion (piecewise linear) | MSE (quadratic, convex, smooth) |
 | Non-separable data | oscillates forever | converges to LMS optimum |
@@ -400,7 +400,7 @@ $$
 By induction from $\mathbf w^{\star\mathsf T}\mathbf w_0 = 0$:
 
 $$
-\mathbf w^{\star\mathsf T}\mathbf w_k \;\ge\; k\gamma. \tag{6.1}
+\mathbf w^{\star\mathsf T}\mathbf w_k \;\ge\; k\gamma. \quad (6.1)
 $$
 
 **Step 2 — Upper bound (the norm grows only as $\sqrt{k}$).**
@@ -412,7 +412,7 @@ $$
 Precisely, $\|\mathbf w_k\|^2 = \|\mathbf w_{k-1}\|^2 + 2\,d_{i_k}\mathbf w_{k-1}^{\mathsf T}\mathbf x_{i_k} + d_{i_k}^2\|\mathbf x_{i_k}\|^2$. Because a **mistake** occurred, $d_{i_k}\mathbf w_{k-1}^{\mathsf T}\mathbf x_{i_k} \le 0$; and $d_{i_k}^2=1$, $\|\mathbf x_{i_k}\|^2\le R^2$. Hence
 
 $$
-\|\mathbf w_k\|^2 \le \|\mathbf w_{k-1}\|^2 + R^2 \;\;\Longrightarrow\;\; \|\mathbf w_k\|^2 \le kR^2 . \tag{6.2}
+\|\mathbf w_k\|^2 \le \|\mathbf w_{k-1}\|^2 + R^2 \;\;\Longrightarrow\;\; \|\mathbf w_k\|^2 \le kR^2 . \quad (6.2)
 $$
 
 **Step 3 — Combine via Cauchy–Schwarz.** Since $\|\mathbf w^\star\|=1$,
@@ -474,7 +474,7 @@ which is a **single linear map**. Depth adds *zero* representational power witho
 
 $$
 \varphi(v)=\begin{cases}1,& v\ge0\\ 0,& v<0\end{cases}
-\qquad\text{(bipolar variant: } \operatorname{sgn}(v)\in\{-1,+1\})
+\qquad\text{(bipolar variant: } \mathrm{sgn}(v)\in\{-1,+1\})
 $$
 
 $$
@@ -567,8 +567,8 @@ $$
 
 **Weight initialisation is coupled to $\varphi$** (proved in Unit II):
 $$
-\text{Xavier/Glorot: } \operatorname{Var}(w)=\frac{2}{n_{\text{in}}+n_{\text{out}}} \;\;(\tanh);\qquad
-\text{He/Kaiming: } \operatorname{Var}(w)=\frac{2}{n_{\text{in}}} \;\;(\text{ReLU}).
+\text{Xavier/Glorot: } \mathrm{Var}(w)=\frac{2}{n_{\text{in}}+n_{\text{out}}} \;\;(\tanh);\qquad
+\text{He/Kaiming: } \mathrm{Var}(w)=\frac{2}{n_{\text{in}}} \;\;(\text{ReLU}).
 $$
 
 ### 8.6 Softmax (vector-valued)
@@ -597,7 +597,7 @@ Combined:
 $$
 \boxed{\;\frac{\partial y_i}{\partial v_k} = y_i(\delta_{ik} - y_k)
 \quad\Longleftrightarrow\quad
-\mathbf J = \operatorname{diag}(\mathbf y) - \mathbf y\mathbf y^{\mathsf T}\;}
+\mathbf J = \mathrm{diag}(\mathbf y) - \mathbf y\mathbf y^{\mathsf T}\;}
 $$
 Note $\mathbf J$ is symmetric PSD, and $\mathbf J\mathbf 1 = \mathbf 0$ ⇒ **rank $C-1$** (consistent with the shift-invariance / one redundant degree of freedom).
 
@@ -664,7 +664,7 @@ Data (bipolar, bias absorbed as $x_0=1$): $\eta=1$, $\mathbf w(0)=(0,0,0)$ with 
 | 1 | +1 | −1 | −1 |
 | 1 | +1 | +1 | +1 |
 
-Rule: $y = \operatorname{sgn}(\mathbf w^{\mathsf T}\mathbf x)$ with $\operatorname{sgn}(0)=+1$; on error $\mathbf w \leftarrow \mathbf w + d\,\mathbf x$.
+Rule: $y = \mathrm{sgn}(\mathbf w^{\mathsf T}\mathbf x)$ with $\mathrm{sgn}(0)=+1$; on error $\mathbf w \leftarrow \mathbf w + d\,\mathbf x$.
 
 **Epoch 1**
 
@@ -742,7 +742,7 @@ $$
 \mathbf y = (0.659001,\;0.242433,\;0.098566),\qquad \textstyle\sum y_i = 1.000 \;✓
 $$
 
-Jacobian $\mathbf J = \operatorname{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}$:
+Jacobian $\mathbf J = \mathrm{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}$:
 
 $$
 \mathbf J=
@@ -815,7 +815,7 @@ v=\mathbf w^{\mathsf T}\mathbf x + b \quad|\quad
 \tanh(v)=2\sigma(2v)-1
 $$
 $$
-\mathbf J_{\text{softmax}} = \operatorname{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}\quad|\quad
+\mathbf J_{\text{softmax}} = \mathrm{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}\quad|\quad
 \partial\mathcal L_{\text{CE}}/\partial \mathbf v = \mathbf y - \mathbf t \quad|\quad
 k_{\max}\le (R/\gamma)^2 \quad|\quad
 C(N,n)=2\!\sum_{k=0}^{n-1}\!\binom{N-1}{k}
