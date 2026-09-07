@@ -1,1127 +1,548 @@
 # Unit II — Feedforward Neural Networks
 
-> **INT511 – Neural Networks** | M.Tech Level Notes
-> **Coverage:** Multi-layer neural network · XOR problem · Backpropagation algorithm · Cost functions · Gradient descent · Overfitting · Regularization techniques
+**INT511 – Neural Networks (M.Tech)**
+**This unit is designed for Weeks 3–4 of the semester (6 lecture sessions).**
+
+In Unit I, we saw that a single neuron (M-P neuron or Perceptron) can only draw one straight line, so it fails on problems like XOR. This unit shows exactly *how* stacking neurons into multiple layers fixes this, and — most importantly — *how such a multi-layer network is actually trained*, using an algorithm called **backpropagation**.
 
 ---
 
-## Table of Contents
+## How this unit is paced
 
-1. [Multi-Layer Neural Network — Architecture & Notation](#1-multi-layer-neural-network--architecture--notation)
-2. [The XOR Problem](#2-the-xor-problem)
-3. [Backpropagation — Complete Derivation](#3-backpropagation--complete-derivation)
-4. [Backpropagation — Fully Worked Numerical](#4-backpropagation--fully-worked-numerical)
-5. [Cost Functions](#5-cost-functions)
-6. [Gradient Descent — Theory and Convergence](#6-gradient-descent--theory-and-convergence)
-7. [Overfitting and the Bias–Variance Decomposition](#7-overfitting-and-the-biasvariance-decomposition)
-8. [Regularization Techniques](#8-regularization-techniques)
-9. [Weight Initialization (Xavier & He Derivations)](#9-weight-initialization-xavier--he-derivations)
-10. [Practical Training Recipe & Debugging](#10-practical-training-recipe--debugging)
-11. [Solved Numericals](#11-solved-numericals)
-12. [Viva / Exam Pointers](#12-viva--exam-pointers)
-
----
-
-## 1. Multi-Layer Neural Network — Architecture & Notation
-
-### 1.1 Architecture
-
-```
-   INPUT          HIDDEN 1        HIDDEN 2         OUTPUT
-   layer 0         layer 1         layer 2         layer L
-
-   x₁ ●──────┐   ┌──► ● a₁⁽¹⁾ ──┐  ┌──► ● ──┐   ┌──► ● ŷ₁
-             ├───┤              ├──┤        ├───┤
-   x₂ ●──────┤   ├──► ● a₂⁽¹⁾ ──┤  ├──► ● ──┤   ├──► ● ŷ₂
-             ├───┤              ├──┤        ├───┤
-   x₃ ●──────┘   └──► ● a₃⁽¹⁾ ──┘  └──► ● ──┘   └──► ● ŷ₃
-                     W⁽¹⁾,b⁽¹⁾      W⁽²⁾,b⁽²⁾     W⁽³⁾,b⁽³⁾
-                     φ⁽¹⁾           φ⁽²⁾          φ⁽³⁾ (softmax/linear)
-
-   ───────────────── FORWARD PASS  (activations) ─────────────────►
-   ◄──────────────── BACKWARD PASS (deltas δ)  ────────────────────
-```
-
-### 1.2 Canonical notation (used throughout these notes)
-
-| Symbol | Meaning | Shape |
-|---|---|---|
-| $L$ | number of layers (excluding input) | scalar |
-| $n_\ell$ | width of layer $\ell$ | scalar |
-| $\mathbf W^{(\ell)}$ | weights from layer $\ell{-}1$ to $\ell$ | $n_\ell \times n_{\ell-1}$ |
-| $\mathbf b^{(\ell)}$ | biases of layer $\ell$ | $n_\ell \times 1$ |
-| $\mathbf z^{(\ell)}$ | pre-activation (induced local field) | $n_\ell \times 1$ |
-| $\mathbf a^{(\ell)}$ | activation, $=\varphi^{(\ell)}(\mathbf z^{(\ell)})$ | $n_\ell \times 1$ |
-| $\boldsymbol\delta^{(\ell)}$ | error signal $\partial\mathcal L/\partial \mathbf z^{(\ell)}$ | $n_\ell \times 1$ |
-
-**Forward recursion:**
-
-$$
-\mathbf a^{(0)} = \mathbf x, \qquad
-\mathbf z^{(\ell)} = \mathbf W^{(\ell)}\mathbf a^{(\ell-1)} + \mathbf b^{(\ell)},\qquad
-\mathbf a^{(\ell)} = \varphi^{(\ell)}\!\left(\mathbf z^{(\ell)}\right),\qquad
-\hat{\mathbf y} = \mathbf a^{(L)} .
-$$
-
-Parameter count: $\;P = \sum_{\ell=1}^{L} \left(n_\ell n_{\ell-1} + n_\ell\right)$.
-
-**Example:** a 784–256–128–10 MLP has
-$784(256)+256 + 256(128)+128 + 128(10)+10 = 200\,960 + 32\,896 + 1\,290 = 235\,146$ parameters.
-
-### 1.3 Batched form (what frameworks actually compute)
-
-With a mini-batch $\mathbf X \in \mathbb{R}^{B\times n_0}$ (rows = samples):
-
-$$
-\mathbf Z^{(\ell)} = \mathbf A^{(\ell-1)}\mathbf W^{(\ell)\mathsf T} + \mathbf 1_B \mathbf b^{(\ell)\mathsf T},\qquad
-\mathbf A^{(\ell)} = \varphi(\mathbf Z^{(\ell)}) .
-$$
-
-Forward FLOPs $\approx 2B\sum_\ell n_\ell n_{\ell-1}$; backward $\approx 2\times$ forward; so training $\approx 3\times$ inference cost per sample.
-
-### 1.4 Why depth: the region-counting argument
-
-A ReLU MLP is a **continuous piecewise-linear** function. Each hidden unit contributes a hyperplane that folds input space. The maximum number of linear regions for $L$ hidden layers of width $w$ on $n$ inputs (Montúfar et al. 2014):
-
-$$
-\mathcal R \;\ge\; \left(\prod_{\ell=1}^{L-1}\left\lfloor \frac{w}{n}\right\rfloor^{\,n}\right)\sum_{j=0}^{n}\binom{w}{j}
-\;=\; \Omega\!\left(\left(\tfrac{w}{n}\right)^{n(L-1)} w^{n}\right).
-$$
-
-Regions grow **polynomially in width but exponentially in depth**. This is the precise sense in which "deep" beats "wide".
-
----
-
-## 2. The XOR Problem
-
-### 2.1 Statement and impossibility
-
-XOR truth table with class labels:
-
-```
-      x₂
-      │
-    1 ●(0,1)→1        ○(1,1)→0
-      │
-      │
-    0 ○(0,0)→0        ●(1,0)→1
-      └──────────────────────── x₁
-      0                1
-
-   ● class 1   ○ class 0
-   NO single straight line separates ● from ○
-```
-
-**Proof of non-separability** (see Unit I §N2 for the inequality version). Alternative *convex-hull* proof:
-Class-0 points $\{(0,0),(1,1)\}$ and class-1 points $\{(0,1),(1,0)\}$ are the two **diagonals** of the unit square. Their convex hulls are the two diagonal line segments, which **intersect at $(\tfrac12,\tfrac12)$**. Two sets whose convex hulls intersect cannot be separated by a hyperplane (separating hyperplane theorem). ∎
-
-Generalisation: XOR is the $n{=}2$ case of **parity**, $y = \bigoplus_i x_i$, which requires $\Omega(2^n)$ units at depth 2 but only $O(n)$ units at depth $O(\log n)$ (XOR-tree).
-
-### 2.2 Solution 1 — threshold units (OR minus AND)
-
-$$
-h_1 = \Theta(x_1 + x_2 - 0.5) \;\;(\text{OR}),\qquad
-h_2 = \Theta(x_1 + x_2 - 1.5) \;\;(\text{AND}),\qquad
-y = \Theta(h_1 - h_2 - 0.5)
-$$
-
-```
-              w=1
-    x₁ ──────────────► ┌──────┐ h₁
-        \      w=1     │θ=0.5 │───── +1 ──┐
-         \  ┌──────────►└──────┘           │   ┌──────┐
-          \/                               ├──►│θ=0.5 │──► y
-          /\  w=1      ┌──────┐ h₂         │   └──────┘
-         /  └──────────►│θ=1.5 │───── −1 ──┘
-    x₂ ──────────────► └──────┘
-              w=1
-```
-
-| $x_1$ | $x_2$ | $x_1{+}x_2$ | $h_1$ (OR) | $h_2$ (AND) | $h_1-h_2-0.5$ | $y$ | XOR |
-|---|---|---|---|---|---|---|---|
-| 0 | 0 | 0 | 0 | 0 | −0.5 | 0 | 0 ✓ |
-| 0 | 1 | 1 | 1 | 0 | +0.5 | 1 | 1 ✓ |
-| 1 | 0 | 1 | 1 | 0 | +0.5 | 1 | 1 ✓ |
-| 1 | 1 | 2 | 1 | 1 | −0.5 | 0 | 0 ✓ |
-
-**Geometric interpretation:** the hidden layer maps the four inputs to $\{(0,0),(1,0),(1,0),(1,1)\}$ — the two class-1 points **collapse onto the same hidden representation** $(1,0)$, and the problem becomes linearly separable in $h$-space. *Representation learning in its simplest form.*
-
-### 2.3 Solution 2 — ReLU network (Goodfellow's construction)
-
-$$
-\mathbf h = \text{ReLU}\!\left(\mathbf W\mathbf x + \mathbf c\right),\quad
-\mathbf W = \begin{pmatrix}1&1\\1&1\end{pmatrix},\;
-\mathbf c=\begin{pmatrix}0\\-1\end{pmatrix};\qquad
-y = \mathbf w^{\mathsf T}\mathbf h + b,\quad \mathbf w=\begin{pmatrix}1\\-2\end{pmatrix},\; b=0.
-$$
-
-| $\mathbf x$ | $\mathbf W\mathbf x$ | $+\mathbf c$ | $\mathbf h = \text{ReLU}$ | $y = h_1 - 2h_2$ |
-|---|---|---|---|---|
-| (0,0) | (0,0) | (0,−1) | (0,0) | **0** ✓ |
-| (0,1) | (1,1) | (1,0) | (1,0) | **1** ✓ |
-| (1,0) | (1,1) | (1,0) | (1,0) | **1** ✓ |
-| (1,1) | (2,2) | (2,1) | (2,1) | 2 − 2 = **0** ✓ |
-
-Exactly zero error, no training required — this proves *representational* sufficiency; learning it by gradient descent is a separate (and non-trivial: XOR has a saddle-rich landscape) matter.
-
-### 2.4 Solution 3 — feature augmentation
-
-Add the product feature $x_3 = x_1x_2$. Then
-$$
-y = \Theta(x_1 + x_2 - 2x_3 - 0.5)
-$$
-separates perfectly in $\mathbb R^3$. This is **Cover's theorem in action** (Unit I §7) and is precisely the idea behind kernel methods and RBF networks (Unit V).
-
----
-
-## 3. Backpropagation — Complete Derivation
-
-### 3.1 Setup
-
-Objective for one sample: $\mathcal L\big(\mathbf a^{(L)}, \mathbf y\big)$. We need $\dfrac{\partial \mathcal L}{\partial W^{(\ell)}_{ij}}$ and $\dfrac{\partial\mathcal L}{\partial b^{(\ell)}_i}$ for **all** $\ell$.
-
-Naïve finite differences cost $O(P)$ forward passes ⇒ $O(P^2)$ total. Backprop computes **all** $P$ derivatives in $O(P)$ — a *reverse-mode automatic differentiation* on the computational graph.
-
-### 3.2 Define the local error signal (delta)
-
-$$
-\boxed{\;\delta^{(\ell)}_i \;\triangleq\; \frac{\partial \mathcal L}{\partial z^{(\ell)}_i}\;}
-$$
-
-Everything reduces to computing $\boldsymbol\delta^{(\ell)}$.
-
-### 3.3 Step 1 — Output layer delta (BP1)
-
-$$
-\delta^{(L)}_i = \frac{\partial \mathcal L}{\partial z^{(L)}_i}
-= \sum_k \frac{\partial \mathcal L}{\partial a^{(L)}_k}\frac{\partial a^{(L)}_k}{\partial z^{(L)}_i}
-$$
-
-For an **element-wise** output activation ($a_k = \varphi(z_k)$), the Jacobian is diagonal and
-
-$$
-\boxed{\;\boldsymbol\delta^{(L)} = \nabla_{\mathbf a^{(L)}}\mathcal L \;\odot\; \varphi'\!\left(\mathbf z^{(L)}\right)\;}\qquad (\odot=\text{Hadamard})
-$$
-
-For **softmax** output, use the full Jacobian $\mathbf J = \mathrm{diag}(\mathbf a)-\mathbf a\mathbf a^{\mathsf T}$, i.e. $\boldsymbol\delta^{(L)} = \mathbf J\,\nabla_{\mathbf a}\mathcal L$.
-
-### 3.4 Step 2 — Backward recursion (BP2)
-
-$z^{(\ell)}_i$ influences $\mathcal L$ **only** through the next layer's pre-activations. By the multivariate chain rule:
-
-$$
-\delta^{(\ell)}_i = \frac{\partial\mathcal L}{\partial z^{(\ell)}_i}
-= \sum_{k=1}^{n_{\ell+1}} \frac{\partial\mathcal L}{\partial z^{(\ell+1)}_k}\cdot\frac{\partial z^{(\ell+1)}_k}{\partial z^{(\ell)}_i}
-= \sum_k \delta^{(\ell+1)}_k \cdot \frac{\partial z^{(\ell+1)}_k}{\partial z^{(\ell)}_i}.
-$$
-
-Now, since $z^{(\ell+1)}_k = \sum_j W^{(\ell+1)}_{kj}\,\varphi(z^{(\ell)}_j) + b^{(\ell+1)}_k$:
-
-$$
-\frac{\partial z^{(\ell+1)}_k}{\partial z^{(\ell)}_i} = W^{(\ell+1)}_{ki}\,\varphi'\!\left(z^{(\ell)}_i\right).
-$$
-
-Substituting:
-
-$$
-\boxed{\;\delta^{(\ell)}_i = \varphi'\!\left(z^{(\ell)}_i\right)\sum_{k} W^{(\ell+1)}_{ki}\,\delta^{(\ell+1)}_k
-\quad\Longleftrightarrow\quad
-\boldsymbol\delta^{(\ell)} = \left(\mathbf W^{(\ell+1)\mathsf T}\boldsymbol\delta^{(\ell+1)}\right)\odot \varphi'\!\left(\mathbf z^{(\ell)}\right)\;}
-$$
-
-**Interpretation.** The error is propagated backwards through the **transpose** of the same weight matrix used in the forward pass, then gated by the local derivative. This is *reverse-mode AD*: the backward pass is a linear network with transposed weights.
-
-### 3.5 Step 3 — Parameter gradients (BP3, BP4)
-
-$$
-\frac{\partial \mathcal L}{\partial W^{(\ell)}_{ij}}
-= \frac{\partial\mathcal L}{\partial z^{(\ell)}_i}\cdot\frac{\partial z^{(\ell)}_i}{\partial W^{(\ell)}_{ij}}
-= \delta^{(\ell)}_i \, a^{(\ell-1)}_j
-\qquad\Longrightarrow\qquad
-\boxed{\;\nabla_{\mathbf W^{(\ell)}}\mathcal L = \boldsymbol\delta^{(\ell)}\,\mathbf a^{(\ell-1)\mathsf T}\;}
-$$
-
-$$
-\frac{\partial\mathcal L}{\partial b^{(\ell)}_i} = \delta^{(\ell)}_i
-\qquad\Longrightarrow\qquad
-\boxed{\;\nabla_{\mathbf b^{(\ell)}}\mathcal L = \boldsymbol\delta^{(\ell)}\;}
-$$
-
-> **The four backprop equations (memorise this block):**
-> $$
-> \begin{aligned}
-> \text{(BP1)}\quad &\boldsymbol\delta^{(L)} = \nabla_{\mathbf a}\mathcal L \odot \varphi'(\mathbf z^{(L)})\\
-> \text{(BP2)}\quad &\boldsymbol\delta^{(\ell)} = \left(\mathbf W^{(\ell+1)\mathsf T}\boldsymbol\delta^{(\ell+1)}\right)\odot\varphi'(\mathbf z^{(\ell)})\\
-> \text{(BP3)}\quad &\partial\mathcal L/\partial \mathbf b^{(\ell)} = \boldsymbol\delta^{(\ell)}\\
-> \text{(BP4)}\quad &\partial\mathcal L/\partial \mathbf W^{(\ell)} = \boldsymbol\delta^{(\ell)}\mathbf a^{(\ell-1)\mathsf T}
-> \end{aligned}
-> $$
-
-### 3.6 The algorithm
-
-> **Algorithm: Backpropagation (one mini-batch)**
-> **Input:** batch $\{(\mathbf x_b,\mathbf y_b)\}_{b=1}^{B}$, params $\{\mathbf W^{(\ell)},\mathbf b^{(\ell)}\}$, lr $\eta$
-> 1. **Forward:** $\mathbf a^{(0)}\!=\!\mathbf x$; for $\ell=1..L$: $\mathbf z^{(\ell)}\!=\!\mathbf W^{(\ell)}\mathbf a^{(\ell-1)}\!+\!\mathbf b^{(\ell)}$, $\mathbf a^{(\ell)}\!=\!\varphi(\mathbf z^{(\ell)})$. **Cache** $\mathbf z^{(\ell)},\mathbf a^{(\ell)}$.
-> 2. **Output error:** $\boldsymbol\delta^{(L)}$ via BP1.
-> 3. **Backward:** for $\ell = L{-}1$ down to $1$: $\boldsymbol\delta^{(\ell)}$ via BP2.
-> 4. **Gradients:** $\nabla_{\mathbf W^{(\ell)}} = \frac1B\sum_b \boldsymbol\delta_b^{(\ell)}\mathbf a_b^{(\ell-1)\mathsf T}$, $\nabla_{\mathbf b^{(\ell)}} = \frac1B\sum_b \boldsymbol\delta_b^{(\ell)}$.
-> 5. **Update:** $\mathbf W^{(\ell)} \leftarrow \mathbf W^{(\ell)} - \eta\nabla_{\mathbf W^{(\ell)}}$, likewise $\mathbf b^{(\ell)}$.
->
-> **Complexity:** time $O(B\sum_\ell n_\ell n_{\ell-1})$ per pass; memory $O(B\sum_\ell n_\ell)$ for the cached activations (the real bottleneck in deep nets → *gradient checkpointing* trades compute for memory: $O(\sqrt L)$ memory at ~30 % extra compute).
-
-### 3.7 Gradient checking (numerical verification)
-
-$$
-\frac{\partial\mathcal L}{\partial\theta_i} \approx \frac{\mathcal L(\theta + \epsilon e_i) - \mathcal L(\theta - \epsilon e_i)}{2\epsilon} + O(\epsilon^2)
-$$
-
-Use the central difference (error $O(\epsilon^2)$, not $O(\epsilon)$), $\epsilon \approx 10^{-5}$ in float64, and compare via the **relative error**
-
-$$
-\text{rel} = \frac{\|\nabla_{\text{analytic}} - \nabla_{\text{numeric}}\|_2}{\|\nabla_{\text{analytic}}\|_2 + \|\nabla_{\text{numeric}}\|_2} \;<\; 10^{-7}\;\;\text{(good)},\;\; >10^{-4}\;\;\text{(bug)}.
-$$
-
-Turn off dropout and kinks (ReLU at 0) while checking.
-
-### 3.8 Vanishing / exploding gradients — the formal statement
-
-Unrolling BP2 from layer $L$ back to layer $\ell$:
-
-$$
-\boldsymbol\delta^{(\ell)} = \left[\prod_{k=\ell+1}^{L} \mathbf D^{(k-1)}\mathbf W^{(k)\mathsf T}\right]\boldsymbol\delta^{(L)},
-\qquad \mathbf D^{(k)} = \mathrm{diag}\!\left(\varphi'(\mathbf z^{(k)})\right).
-$$
-
-Taking norms,
-
-$$
-\|\boldsymbol\delta^{(\ell)}\| \le \left(\max_k\|\mathbf D^{(k)}\|\;\max_k\|\mathbf W^{(k)}\|\right)^{L-\ell}\|\boldsymbol\delta^{(L)}\|.
-$$
-
-Let $\rho = \|\mathbf D\|\|\mathbf W\|$. Then:
-- $\rho < 1 \Rightarrow$ **exponential decay** (vanishing gradient) — early layers stop learning;
-- $\rho > 1 \Rightarrow$ **exponential growth** (exploding gradient) — NaNs.
-
-With sigmoid, $\|\mathbf D\|\le 0.25$, so $\rho<1$ unless $\|W\|>4$. **Remedies:** ReLU-family ($\varphi'\in\{0,1\}$), careful initialisation (§9), BatchNorm/LayerNorm, residual connections $\mathbf a^{(\ell)} = \mathbf a^{(\ell-1)} + F(\mathbf a^{(\ell-1)})$ giving $\partial\mathbf a^{(\ell)}/\partial\mathbf a^{(\ell-1)} = \mathbf I + \partial F/\partial\mathbf a$ (identity path ⇒ $\rho\approx1$), and gradient clipping $\mathbf g \leftarrow \mathbf g\cdot\min(1, c/\|\mathbf g\|)$.
-
----
-
-## 4. Backpropagation — Fully Worked Numerical
-
-**Network:** 2 – 2 – 1, sigmoid everywhere, loss $E = \tfrac12(t-\hat y)^2$, learning rate $\eta = 0.5$.
-
-**Initial parameters**
-
-| Param | Value | | Param | Value |
-|---|---|---|---|---|
-| $w_{11}$ (x₁→h₁) | 0.15 | | $v_1$ (h₁→o) | 0.40 |
-| $w_{12}$ (x₂→h₁) | 0.20 | | $v_2$ (h₂→o) | 0.45 |
-| $w_{21}$ (x₁→h₂) | 0.25 | | $b_3$ (bias o) | 0.60 |
-| $w_{22}$ (x₂→h₂) | 0.30 | | | |
-| $b_1$ (bias h₁) | 0.35 | | $b_2$ (bias h₂) | 0.35 |
-
-**Input** $\mathbf x = (0.05,\,0.10)$, **target** $t = 0.01$.
-
-### Step 1 — Forward pass
-
-$$
-z_{h_1} = 0.15(0.05) + 0.20(0.10) + 0.35 = 0.0075 + 0.0200 + 0.35 = \mathbf{0.3775}
-$$
-$$
-a_{h_1} = \sigma(0.3775) = \frac{1}{1+e^{-0.3775}} = \frac{1}{1+0.685570} = \mathbf{0.593270}
-$$
-$$
-z_{h_2} = 0.25(0.05) + 0.30(0.10) + 0.35 = 0.0125 + 0.0300 + 0.35 = \mathbf{0.3925}
-$$
-$$
-a_{h_2} = \sigma(0.3925) = \frac{1}{1+0.675356} = \mathbf{0.596884}
-$$
-$$
-z_o = 0.40(0.593270) + 0.45(0.596884) + 0.60 = 0.237308 + 0.268598 + 0.60 = \mathbf{1.105906}
-$$
-$$
-\hat y = \sigma(1.105906) = \frac{1}{1+0.330910} = \mathbf{0.751365}
-$$
-
-$$
-E = \tfrac12(0.01 - 0.751365)^2 = \tfrac12(0.741365)^2 = \tfrac12(0.549622) = \mathbf{0.274811}
-$$
-
-### Step 2 — Output delta (BP1)
-
-$$
-\frac{\partial E}{\partial \hat y} = -(t - \hat y) = \hat y - t = 0.751365 - 0.01 = 0.741365
-$$
-$$
-\frac{\partial \hat y}{\partial z_o} = \hat y(1-\hat y) = 0.751365 \times 0.248635 = 0.186816
-$$
-$$
-\boxed{\;\delta_o = 0.741365 \times 0.186816 = \mathbf{0.138498}\;}
-$$
-
-### Step 3 — Output-layer gradients (BP3, BP4)
-
-$$
-\frac{\partial E}{\partial v_1} = \delta_o\, a_{h_1} = 0.138498(0.593270) = \mathbf{0.082159}
-$$
-$$
-\frac{\partial E}{\partial v_2} = \delta_o\, a_{h_2} = 0.138498(0.596884) = \mathbf{0.082660}
-$$
-$$
-\frac{\partial E}{\partial b_3} = \delta_o = \mathbf{0.138498}
-$$
-
-### Step 4 — Hidden deltas (BP2)
-
-$$
-\delta_{h_1} = \delta_o\,v_1\,a_{h_1}(1-a_{h_1}) = 0.138498(0.40)(0.593270)(0.406730)
-$$
-$$
-= 0.055399 \times 0.241300 = \mathbf{0.013368}
-$$
-$$
-\delta_{h_2} = \delta_o\,v_2\,a_{h_2}(1-a_{h_2}) = 0.138498(0.45)(0.596884)(0.403116)
-$$
-$$
-= 0.062324 \times 0.240613 = \mathbf{0.014996}
-$$
-
-### Step 5 — Hidden-layer gradients
-
-| Gradient | Computation | Value |
-|---|---|---|
-| $\partial E/\partial w_{11}$ | $\delta_{h_1}x_1 = 0.013368(0.05)$ | 0.00066840 |
-| $\partial E/\partial w_{12}$ | $\delta_{h_1}x_2 = 0.013368(0.10)$ | 0.00133680 |
-| $\partial E/\partial w_{21}$ | $\delta_{h_2}x_1 = 0.014996(0.05)$ | 0.00074980 |
-| $\partial E/\partial w_{22}$ | $\delta_{h_2}x_2 = 0.014996(0.10)$ | 0.00149960 |
-| $\partial E/\partial b_1$ | $\delta_{h_1}$ | 0.01336800 |
-| $\partial E/\partial b_2$ | $\delta_{h_2}$ | 0.01499600 |
-
-> Note how the hidden gradients are **two orders of magnitude smaller** than the output gradients ($10^{-3}$ vs $10^{-1}$). This *is* the vanishing-gradient phenomenon appearing in a 2-layer net; imagine 20 layers.
-
-### Step 6 — Parameter update ($\eta = 0.5$)
-
-| Param | Old | $-\eta\,\nabla$ | New |
-|---|---|---|---|
-| $v_1$ | 0.40 | −0.041080 | **0.358920** |
-| $v_2$ | 0.45 | −0.041330 | **0.408670** |
-| $b_3$ | 0.60 | −0.069249 | **0.530751** |
-| $w_{11}$ | 0.15 | −0.000334 | **0.149666** |
-| $w_{12}$ | 0.20 | −0.000668 | **0.199332** |
-| $w_{21}$ | 0.25 | −0.000375 | **0.249625** |
-| $w_{22}$ | 0.30 | −0.000750 | **0.299250** |
-| $b_1$ | 0.35 | −0.006684 | **0.343316** |
-| $b_2$ | 0.35 | −0.007498 | **0.342502** |
-
-### Step 7 — Verify the loss decreased
-
-$$
-z_{h_1}' = 0.149666(0.05)+0.199332(0.10)+0.343316 = 0.370732 \Rightarrow a_{h_1}' = 0.591639
-$$
-$$
-z_{h_2}' = 0.249625(0.05)+0.299250(0.10)+0.342502 = 0.384908 \Rightarrow a_{h_2}' = 0.595055
-$$
-$$
-z_o' = 0.358920(0.591639)+0.408670(0.595055)+0.530751 = 0.212349+0.243182+0.530751 = 0.986282
-$$
-$$
-\hat y' = \sigma(0.986282) = 0.728353,\qquad
-E' = \tfrac12(0.01-0.728353)^2 = \mathbf{0.258016}
-$$
-
-$$
-\Delta E = 0.258016 - 0.274811 = \mathbf{-0.016795} \quad ✓\;\text{loss decreased}
-$$
-
-**First-order sanity check:** predicted decrease $\approx \eta\|\nabla E\|^2 = 0.5\big(0.082159^2+0.082660^2+0.138498^2 + \dots\big) \approx 0.5(0.0292) \approx 0.0146$. Observed $0.0168$; the small discrepancy is the second-order (curvature) term — here helping because the step moved into a steeper descent region.
-
----
-
-## 5. Cost Functions
-
-### 5.1 Mean Squared Error (MSE / SSE)
-
-$$
-\mathcal L_{\text{MSE}} = \frac{1}{2N}\sum_{i=1}^{N}\|\mathbf y_i - \hat{\mathbf y}_i\|_2^2,
-\qquad \frac{\partial \mathcal L}{\partial \hat y} = \hat y - y .
-$$
-
-**MLE derivation.** Assume $y = f_\theta(x) + \epsilon$, $\epsilon\sim\mathcal N(0,\sigma^2)$. Then
-$$
-\log p(\mathcal D|\theta) = \sum_i \log \frac{1}{\sqrt{2\pi\sigma^2}}e^{-\frac{(y_i - f_\theta(x_i))^2}{2\sigma^2}}
-= -\frac{1}{2\sigma^2}\sum_i (y_i-f_\theta(x_i))^2 - \frac N2\log(2\pi\sigma^2).
-$$
-Maximising the log-likelihood $\equiv$ minimising SSE. **So MSE assumes homoscedastic Gaussian noise** — inappropriate for classification.
-
-### 5.2 Cross-Entropy
-
-**Binary (Bernoulli MLE):**
-$$
-\mathcal L_{\text{BCE}} = -\frac1N\sum_i\Big[y_i\log\hat y_i + (1-y_i)\log(1-\hat y_i)\Big]
-$$
-
-**Categorical (Multinoulli MLE):**
-$$
-\mathcal L_{\text{CCE}} = -\frac1N\sum_{i=1}^{N}\sum_{c=1}^{C} t_{ic}\log \hat y_{ic}
-$$
-
-**Information-theoretic identity:**
-$$
-H(p, q) = H(p) + D_{\text{KL}}(p\|q).
-$$
-Since the empirical $p$ (one-hot) has $H(p)=0$, **minimising cross-entropy $\equiv$ minimising KL divergence** between the empirical and model distributions.
-
-### 5.3 The learning-slowdown problem — why CE beats MSE for classification
-
-**With sigmoid output + MSE:**
-$$
-\frac{\partial \mathcal L}{\partial z} = (\hat y - y)\,\underbrace{\sigma'(z)}_{\to\,0\text{ when saturated}} = (\hat y-y)\hat y(1-\hat y)
-$$
-If $y=1$ but $\hat y=0.001$ (confidently wrong), $\sigma' = 0.001(0.999)\approx 10^{-3}$ ⇒ **gradient $\approx 10^{-3}$: learning stalls exactly when the error is largest.**
-
-**With sigmoid output + BCE:**
-$$
-\frac{\partial\mathcal L}{\partial \hat y} = -\frac{y}{\hat y} + \frac{1-y}{1-\hat y} = \frac{\hat y - y}{\hat y(1-\hat y)}
-$$
-$$
-\frac{\partial\mathcal L}{\partial z} = \frac{\hat y-y}{\hat y(1-\hat y)}\cdot \hat y(1-\hat y) = \boxed{\;\hat y - y\;}
-$$
-The saturating factor **cancels exactly**. The same happens for softmax+CCE (Unit I §8.6). For the same wrong prediction, the gradient is $0.001-1 = -0.999$ — three orders of magnitude larger.
-
-**Convexity note:** MSE with a sigmoid output is **non-convex even for a single neuron**; BCE with a sigmoid is **convex in $\mathbf w$**. This is a second, independent reason to prefer CE.
-
-### 5.4 Catalogue of loss functions
-
-| Loss | Formula | Output activation | Use |
-|---|---|---|---|
-| MSE / L2 | $\tfrac12(y-\hat y)^2$ | linear | regression, Gaussian noise |
-| MAE / L1 | $\lvert y-\hat y\rvert$ | linear | robust regression (Laplace noise) |
-| Huber | $\begin{cases}\tfrac12 e^2 & \lvert e\rvert\le\delta\\ \delta(\lvert e\rvert-\tfrac\delta2)& \text{else}\end{cases}$ | linear | robust + differentiable at 0 |
-| BCE | $-[y\log\hat y + (1{-}y)\log(1{-}\hat y)]$ | sigmoid | binary / multi-label |
-| CCE | $-\sum_c t_c\log \hat y_c$ | softmax | multi-class |
-| KL | $\sum_c p_c \log(p_c/q_c)$ | softmax | distillation, VAE |
-| Hinge | $\max(0, 1-y\hat y)$ | linear | SVM-style margin |
-| Focal | $-\alpha(1-\hat y)^\gamma\log\hat y$ | sigmoid | class imbalance |
-| Contrastive/InfoNCE | $-\log\frac{e^{s^+/\tau}}{\sum e^{s/\tau}}$ | — | self-supervised |
-
-### 5.5 The general "canonical link" theorem
-
-For any **exponential-family** output distribution with natural parameter $z$ and its canonical link activation $\varphi$, minimising the negative log-likelihood always gives
-
-$$
-\boxed{\;\frac{\partial\mathcal L}{\partial \mathbf z^{(L)}} = \hat{\mathbf y} - \mathbf y\;}
-$$
-
-| Distribution | Activation | Loss |
-|---|---|---|
-| Gaussian | identity | MSE |
-| Bernoulli | sigmoid | BCE |
-| Categorical | softmax | CCE |
-| Poisson | exp | Poisson NLL |
-
-*This is why frameworks fuse `softmax_cross_entropy` into one op — both for numerical stability (log-sum-exp) and because the fused gradient is trivially $\hat y - y$.*
-
----
-
-## 6. Gradient Descent — Theory and Convergence
-
-### 6.1 The three variants
-
-| Variant | Update uses | Steps/epoch | Gradient noise | Memory |
-|---|---|---|---|---|
-| **Batch GD** | all $N$ samples | 1 | none | $O(N)$ |
-| **Stochastic GD** | 1 sample | $N$ | very high | $O(1)$ |
-| **Mini-batch GD** | $B$ samples ($32$–$512$) | $N/B$ | $\propto 1/\sqrt B$ | $O(B)$ |
-
-$$
-\theta_{k+1} = \theta_k - \eta\,\nabla_\theta \hat{\mathcal L}_{\mathcal B_k}(\theta_k),\qquad
-\mathbb{E}\!\left[\nabla \hat{\mathcal L}_{\mathcal B}\right] = \nabla\mathcal L \;\;(\text{unbiased}),\qquad
-\mathrm{Var} = \frac{\Sigma}{B}.
-$$
-
-### 6.2 Convergence of batch GD on a smooth objective
-
-**Assumption ($L$-smoothness):** $\|\nabla f(x)-\nabla f(y)\|\le L\|x-y\|$, equivalently
-$$
-f(y) \le f(x) + \nabla f(x)^{\mathsf T}(y-x) + \tfrac{L}{2}\|y-x\|^2 .
-$$
-
-Put $y = x - \eta\nabla f(x)$:
-$$
-f(x^+) \le f(x) - \eta\|\nabla f\|^2 + \tfrac{L\eta^2}{2}\|\nabla f\|^2
-= f(x) - \eta\left(1 - \tfrac{L\eta}{2}\right)\|\nabla f\|^2 .
-$$
-
-**Descent guarantee:** need $\eta < 2/L$. With the optimal $\eta = 1/L$:
-$$
-f(x^+) \le f(x) - \frac{1}{2L}\|\nabla f(x)\|^2 .
-$$
-Telescoping over $K$ steps gives the non-convex rate
-$$
-\min_{k\le K}\|\nabla f(x_k)\|^2 \le \frac{2L\big(f(x_0)-f^\star\big)}{K}
-\qquad\Rightarrow\qquad O(1/\sqrt K)\ \text{for the gradient norm.}
-$$
-
-**Strongly convex case ($\mu$-strong convexity):** linear convergence
-$$
-f(x_K)-f^\star \le \left(1 - \frac{\mu}{L}\right)^{K}\big(f(x_0)-f^\star\big) = \left(1-\frac1\kappa\right)^K(\cdot),\quad \kappa = L/\mu .
-$$
-
-**Quadratic case, exact analysis.** For $f(\theta)=\tfrac12\theta^{\mathsf T}\mathbf H\theta$ with $\mathbf H = \mathbf Q\Lambda\mathbf Q^{\mathsf T}$, in the eigenbasis $\tilde\theta = \mathbf Q^{\mathsf T}\theta$:
-$$
-\tilde\theta_i^{(k)} = (1-\eta\lambda_i)^{k}\,\tilde\theta_i^{(0)} .
-$$
-- Stability requires $|1-\eta\lambda_i|<1 \;\forall i \Rightarrow \boxed{0<\eta<2/\lambda_{\max}}$.
-- Optimal $\eta^\star = \dfrac{2}{\lambda_{\min}+\lambda_{\max}}$, giving contraction factor $\dfrac{\kappa-1}{\kappa+1}$.
-- **Ill-conditioning ($\kappa\gg1$) is the fundamental problem:** the smallest direction converges $\kappa$ times slower ⇒ the classic **zig-zag in a narrow ravine**. Momentum (Unit VI) reduces the dependence from $\kappa$ to $\sqrt\kappa$.
-
-### 6.3 SGD convergence (Robbins–Monro)
-
-With learning-rate schedule $\eta_k$ satisfying
-$$
-\sum_{k=1}^{\infty}\eta_k = \infty \quad\text{(enough total travel)},\qquad
-\sum_{k=1}^{\infty}\eta_k^2 < \infty \quad\text{(noise averages out)},
-$$
-SGD converges almost surely to a stationary point. E.g. $\eta_k = \eta_0/k$ ✓; $\eta_k = \eta_0/\sqrt k$ satisfies the first but not the second (still gives $O(1/\sqrt k)$ in convex settings).
-
-**Rate (convex, bounded variance $\sigma^2$):** $\mathbb E[f(\bar x_K)] - f^\star = O\!\left(\dfrac{\sigma}{\sqrt K}\right)$ — *sub-linear regardless of $\kappa$*, because noise, not curvature, dominates.
-
-### 6.4 Loss-surface geometry in high dimensions
-
-- **Critical points:** at a random critical point of a high-dimensional random function, the Hessian eigenvalues follow a semicircle law; the probability that *all* $P$ eigenvalues are positive is $\approx e^{-cP}$. ⇒ **Saddle points vastly outnumber local minima.**
-- **Index–loss relation:** critical points with high loss are overwhelmingly saddles; local minima cluster near the global value (Dauphin et al. 2014, Choromanska et al. 2015).
-- **Practical implication:** the enemy is *plateaus around saddles*, not bad local minima. Escape mechanisms: SGD noise, momentum, adaptive methods.
-- **Mode connectivity:** independently trained solutions are often connected by low-loss paths ⇒ the minima form a connected manifold, not isolated wells.
-- **Flat vs sharp minima:** flat minima (small $\|\mathbf H\|$) generalise better (PAC-Bayes / MDL argument). Large batch → sharp minima → worse generalisation; SAM (sharpness-aware minimisation) explicitly optimises $\max_{\|\epsilon\|\le\rho} \mathcal L(\theta+\epsilon)$.
-
----
-
-## 7. Overfitting and the Bias–Variance Decomposition
-
-### 7.1 The phenomenon
-
-```
- Error
-   │  ╲                                        ╱ validation
-   │   ╲                                     ╱
-   │    ╲                                  ╱
-   │     ╲__________________       _____╱
-   │                        ╲____╱  ← best model (early stopping point)
-   │      ╲
-   │        ╲__________________________________  training
-   └──────────────────────────────────────────────► capacity / epochs
-       underfit   |    sweet spot    |   overfit
-      (high bias) |                  | (high variance)
-```
-
-### 7.2 Full derivation of the bias–variance decomposition
-
-Let $y = f(x) + \epsilon$, $\mathbb E[\epsilon]=0$, $\mathrm{Var}(\epsilon)=\sigma^2$. Let $\hat f_{\mathcal D}$ be the model trained on dataset $\mathcal D$. The expected squared error at a fixed $x$:
-
-$$
-\mathbb E_{\mathcal D,\epsilon}\!\left[(y - \hat f_{\mathcal D}(x))^2\right]
-$$
-
-Insert $\pm \bar f(x)$ where $\bar f(x)=\mathbb E_{\mathcal D}[\hat f_{\mathcal D}(x)]$, and $\pm f(x)$:
-
-$$
-= \mathbb E\!\left[\Big( \underbrace{(f + \epsilon) - \bar f}_{A} + \underbrace{\bar f - \hat f_{\mathcal D}}_{B} \Big)^2\right]
-= \mathbb E[A^2] + 2\mathbb E[AB] + \mathbb E[B^2]
-$$
-
-Cross term: $\mathbb E[AB] = \mathbb E[(f+\epsilon-\bar f)]\,\mathbb E[(\bar f - \hat f_{\mathcal D})] = (\cdot)\times 0 = 0$ (independence of $\epsilon$ and $\mathcal D$, and $\mathbb E_{\mathcal D}[\bar f - \hat f_{\mathcal D}]=0$).
-
-$$
-\mathbb E[A^2] = \mathbb E[(f-\bar f)^2] + 2\mathbb E[\epsilon(f-\bar f)] + \mathbb E[\epsilon^2] = (f-\bar f)^2 + \sigma^2
-$$
-$$
-\mathbb E[B^2] = \mathbb E_{\mathcal D}\!\left[(\hat f_{\mathcal D}-\bar f)^2\right] = \mathrm{Var}_{\mathcal D}(\hat f)
-$$
-
-$$
-\boxed{\;\underbrace{\mathbb E\big[(y-\hat f)^2\big]}_{\text{expected test error}} = \underbrace{\big(f(x)-\bar f(x)\big)^2}_{\text{Bias}^2} + \underbrace{\mathrm{Var}_{\mathcal D}\big(\hat f(x)\big)}_{\text{Variance}} + \underbrace{\sigma^2}_{\text{irreducible noise}}\;}
-$$
-
-| Regime | Bias | Variance | Symptom |
-|---|---|---|---|
-| Underfitting | high | low | train error ≈ test error, both large |
-| Overfitting | low | high | train error ≪ test error |
-| Just right | balanced | balanced | small gap, small error |
-
-### 7.3 Capacity measures
-
-- **VC dimension.** For a network with $P$ weights and threshold units, $\text{VC} = O(P\log P)$; for piecewise-linear (ReLU) nets of depth $L$, $\text{VC} = O(PL\log P)$.
-- **Generalisation bound.** With probability $1-\delta$:
-
-  $$
-  R(\theta) \le \hat R(\theta) + O\!\left(\sqrt{\frac{\text{VC}\log(N/\text{VC}) + \log(1/\delta)}{N}}\right).
-  $$
-
-- **Rademacher complexity** gives tighter, norm-based bounds: $\hat{\mathfrak R}_N(\mathcal F) \le \frac{\prod_\ell \|W^{(\ell)}\|_F}{\sqrt N}$ — this justifies *weight-norm* regularisation directly.
-
-### 7.4 The deep-learning paradox and double descent
-
-Modern nets have $P \gg N$ and can fit **random labels** perfectly (Zhang et al. 2017) — so classical VC bounds are vacuous. Empirically:
-
-```
-Test
-error │╲
-      │ ╲      ╱╲  ← interpolation threshold (P ≈ N)
-      │  ╲___╱   ╲
-      │            ╲______________  ← modern over-parameterised regime
-      └──────────────────────────────► model capacity P
-       classical U   |  double descent
-```
-
-**Explanation:** beyond the interpolation threshold, among the infinitely many zero-training-error solutions, SGD exhibits an *implicit bias* toward minimum-norm / maximum-margin solutions, which generalise well.
-
----
-
-## 8. Regularization Techniques
-
-### 8.1 $L_2$ regularization (weight decay / ridge / Tikhonov)
-
-$$
-\tilde{\mathcal L}(\theta) = \mathcal L(\theta) + \frac{\lambda}{2}\|\mathbf w\|_2^2
-\qquad\Longrightarrow\qquad
-\nabla\tilde{\mathcal L} = \nabla\mathcal L + \lambda \mathbf w
-$$
-$$
-\mathbf w \leftarrow \mathbf w - \eta(\nabla\mathcal L + \lambda\mathbf w) = \underbrace{(1-\eta\lambda)}_{\text{shrinkage}}\mathbf w - \eta\nabla\mathcal L
-$$
-
-**Analysis in the Hessian eigenbasis (the key derivation).** Quadratic approximation around the unregularised optimum $\mathbf w^\star$:
-$$
-\hat{\mathcal L}(\mathbf w) = \mathcal L(\mathbf w^\star) + \tfrac12(\mathbf w-\mathbf w^\star)^{\mathsf T}\mathbf H(\mathbf w - \mathbf w^\star).
-$$
-Setting $\nabla\big[\hat{\mathcal L} + \tfrac\lambda2\|\mathbf w\|^2\big]=0$:
-$$
-\mathbf H(\tilde{\mathbf w}-\mathbf w^\star) + \lambda\tilde{\mathbf w} = 0 \Rightarrow \tilde{\mathbf w} = (\mathbf H+\lambda\mathbf I)^{-1}\mathbf H\,\mathbf w^\star .
-$$
-With $\mathbf H = \mathbf Q\Lambda\mathbf Q^{\mathsf T}$:
-$$
-\boxed{\;\mathbf Q^{\mathsf T}\tilde{\mathbf w} = \mathrm{diag}\!\left(\frac{\lambda_i}{\lambda_i + \lambda}\right)\mathbf Q^{\mathsf T}\mathbf w^\star\;}
-$$
-
-**Interpretation:** directions with **large curvature** ($\lambda_i \gg \lambda$) are essentially untouched; directions with **small curvature** ($\lambda_i\ll\lambda$) are shrunk toward zero. $L_2$ *removes the directions in which the data does not constrain the solution.*
-
-**Bayesian view:** $L_2$ = MAP estimation with a Gaussian prior $\mathbf w \sim \mathcal N(0,\tau^2\mathbf I)$, $\lambda = \sigma^2/\tau^2$.
-
-> **AdamW note:** $L_2$ penalty and weight decay are **not** the same under adaptive optimisers, because the penalty gets divided by $\sqrt{\hat v}$. AdamW decouples them: $\mathbf w \leftarrow \mathbf w - \eta\big(\hat m/(\sqrt{\hat v}+\epsilon) + \lambda \mathbf w\big)$. (See Unit VI.)
-
-### 8.2 $L_1$ regularization (LASSO) — why it produces sparsity
-
-$$
-\tilde{\mathcal L} = \mathcal L + \lambda\|\mathbf w\|_1,\qquad
-\nabla = \nabla\mathcal L + \lambda\,\mathrm{sgn}(\mathbf w)
-$$
-
-**Derivation of the soft-threshold solution.** Assume a diagonal Hessian $\mathbf H=\mathrm{diag}(h_i)$ (as in Goodfellow §7.1.2). Per coordinate:
-$$
-\min_{w_i}\; \tfrac{h_i}{2}(w_i - w_i^\star)^2 + \lambda|w_i| .
-$$
-Sub-differential condition $h_i(w_i-w_i^\star) + \lambda\,\partial|w_i| \ni 0$ gives
-$$
-\boxed{\;\tilde w_i = \mathrm{sgn}(w_i^\star)\max\!\left(|w_i^\star| - \frac{\lambda}{h_i},\;0\right)\;}
-$$
-
-**So if $|w_i^\star| \le \lambda/h_i$, the weight is set exactly to ZERO** — a hard, exact sparsification. Contrast with $L_2$, which only *multiplies* weights by $\lambda_i/(\lambda_i+\lambda) \ne 0$.
-
-**Geometric intuition:** the $L_1$ ball $\{\|w\|_1\le t\}$ is a cross-polytope whose **vertices lie on the axes**; the elliptical loss contour typically first touches it at a vertex ⇒ zeros. The $L_2$ ball is smooth, so contact is generically off-axis.
-
-**Bayesian view:** Laplace prior $p(w_i)\propto e^{-\lambda|w_i|}$.
-
-| | $L_1$ | $L_2$ |
-|---|---|---|
-| Penalty | $\lambda\sum\lvert w_i\rvert $ | $\tfrac\lambda2\sum w_i^2$ |
-| Gradient | $\lambda\mathrm{sgn}(w)$ (constant magnitude) | $\lambda w$ (proportional) |
-| Solution | **sparse** (feature selection) | dense, shrunk |
-| Prior | Laplace | Gaussian |
-| Differentiable at 0 | No | Yes |
-| Elastic net | $\alpha\lambda\Vert w\Vert _1 + \tfrac{(1-\alpha)\lambda}{2}\Vert w\Vert _2^2$ — combines both | |
-
-### 8.3 Dropout
-
-**Training:** for each unit independently, sample $r_j \sim \text{Bernoulli}(p)$ (keep-probability $p$) and set
-$$
-\tilde a_j = \frac{r_j}{p}\,a_j \quad\text{(inverted dropout — scale at train time)}.
-$$
-**Testing:** use all units unchanged (no scaling needed with inverted dropout).
-
-**Why the $1/p$ scaling.** $\mathbb E[\tilde a_j] = \frac1p\,\mathbb E[r_j]\,a_j = \frac1p (p)a_j = a_j$ ⇒ the expected pre-activation of the next layer is identical at train and test time.
-
-**Interpretation 1 — Exponential ensemble.** A network with $n$ droppable units defines $2^n$ sub-networks sharing weights. Dropout trains them jointly; test-time weight scaling is a cheap approximation to the **geometric mean** of their predictions. (For a single softmax layer it is *exactly* the normalised geometric mean.)
-
-**Interpretation 2 — Adaptive $L_2$.** For linear regression with dropout on inputs, taking the expectation over the mask gives
-$$
-\mathbb E_{\mathbf r}\left[\|\mathbf y - (\mathbf r\odot \mathbf X)\mathbf w\|^2\right]
-= \|\mathbf y - p\mathbf X\mathbf w\|^2 + p(1-p)\sum_j \|\mathbf X_{:,j}\|^2 w_j^2 ,
-$$
-i.e. dropout $\equiv$ **$L_2$ penalty scaled by the input feature norms** (a data-dependent ridge).
-
-**Interpretation 3 — Co-adaptation breaking.** No unit can rely on a specific partner being present ⇒ redundant, robust features.
-
-**Practice:** $p_{\text{keep}} = 0.5$ for fully-connected hidden layers, $0.8$–$0.9$ for inputs; rarely used in conv layers (use BatchNorm/spatial dropout instead); usually removed when BatchNorm is present (variance-shift conflict).
-
-### 8.4 Early stopping — and its exact equivalence to $L_2$
-
-Monitor validation loss; stop after $p$ epochs ("patience") without improvement; restore the best checkpoint.
-
-**Theorem.** For a quadratic loss with Hessian $\mathbf H=\mathbf Q\Lambda\mathbf Q^{\mathsf T}$ and GD started at $\mathbf w^{(0)}=\mathbf 0$ with learning rate $\eta$, after $\tau$ steps:
-$$
-\mathbf Q^{\mathsf T}\mathbf w^{(\tau)} = \left[\mathbf I - (\mathbf I - \eta\Lambda)^{\tau}\right]\mathbf Q^{\mathsf T}\mathbf w^\star .
-$$
-Compare with the $L_2$ result $\mathbf Q^{\mathsf T}\tilde{\mathbf w} = \Lambda(\Lambda+\lambda\mathbf I)^{-1}\mathbf Q^{\mathsf T}\mathbf w^\star$, i.e. componentwise $\frac{\lambda_i}{\lambda_i+\lambda} = 1 - \frac{\lambda}{\lambda_i+\lambda}$.
-Matching the two requires $(1-\eta\lambda_i)^\tau = \frac{\lambda}{\lambda_i+\lambda}$. For small $\eta\lambda_i$, $\log(1-\eta\lambda_i)\approx-\eta\lambda_i$, giving
-
-$$
-\boxed{\;\tau \approx \frac{1}{\eta\lambda} \quad\Longleftrightarrow\quad \lambda \approx \frac{1}{\tau\eta}\;}
-$$
-
-**Early stopping is $L_2$ regularization with an implicit $\lambda = 1/(\eta\tau)$** — training longer = weaker regularization. This is one of the most-asked derivations at M.Tech level.
-
-### 8.5 Data augmentation
-
-$$
-\hat{\mathcal L} = \frac1N\sum_i \mathbb E_{T\sim\mathcal T}\big[\mathcal L(f_\theta(T(x_i)), y_i)\big]
-$$
-Encodes **invariances** as a prior. Images: flips, crops, colour jitter, Cutout, Mixup ($\tilde x = \lambda x_i + (1-\lambda)x_j$, $\tilde y=\lambda y_i+(1-\lambda)y_j$), CutMix, RandAugment. Text: back-translation, synonym replacement. Audio: SpecAugment.
-
-**Noise injection to inputs** with variance $\sigma^2$ is provably equivalent (to $O(\sigma^2)$) to a **Tikhonov penalty on the Jacobian**: $\lambda\,\mathbb E\|\nabla_x f\|^2$.
-
-### 8.6 Batch Normalization
-
-$$
-\mu_{\mathcal B} = \frac1B\sum_{b}z_b,\quad
-\sigma^2_{\mathcal B}=\frac1B\sum_b (z_b-\mu_{\mathcal B})^2,\quad
-\hat z_b = \frac{z_b-\mu_{\mathcal B}}{\sqrt{\sigma^2_{\mathcal B}+\epsilon}},\quad
-y_b = \gamma\hat z_b + \beta
-$$
-
-Backprop through BN (needed for exams):
-$$
-\frac{\partial\mathcal L}{\partial \hat z_b} = \frac{\partial\mathcal L}{\partial y_b}\gamma,\quad
-\frac{\partial\mathcal L}{\partial\sigma^2} = \sum_b \frac{\partial\mathcal L}{\partial\hat z_b}(z_b-\mu)\cdot\left(-\tfrac12\right)(\sigma^2+\epsilon)^{-3/2},
-$$
-$$
-\frac{\partial\mathcal L}{\partial\mu} = \sum_b\frac{\partial\mathcal L}{\partial\hat z_b}\cdot\frac{-1}{\sqrt{\sigma^2+\epsilon}} + \frac{\partial\mathcal L}{\partial\sigma^2}\cdot\frac{-2\sum_b(z_b-\mu)}{B},
-$$
-$$
-\frac{\partial\mathcal L}{\partial z_b} = \frac{\partial\mathcal L}{\partial\hat z_b}\frac{1}{\sqrt{\sigma^2+\epsilon}} + \frac{\partial\mathcal L}{\partial\sigma^2}\frac{2(z_b-\mu)}{B} + \frac{\partial\mathcal L}{\partial\mu}\frac1B .
-$$
-
-**Effects:** smoother loss landscape (better-behaved Lipschitz constant of the gradient — Santurkar et al.), allows larger $\eta$, mild regularization via batch noise. **Inference** uses running averages of $\mu,\sigma^2$. Variants: LayerNorm (over features — Transformers, RNNs), GroupNorm, InstanceNorm, RMSNorm.
-
-### 8.7 Other techniques
-
-| Technique | Mechanism |
+| Lecture | Topic |
 |---|---|
-| **Max-norm** | project $\Vert \mathbf w_j\Vert _2 \le c$ after each update; pairs well with dropout |
-| **Label smoothing** | $t_c \leftarrow (1-\epsilon)t_c + \epsilon/C$; prevents over-confident logits, improves calibration |
-| **Parameter sharing** | CNN weight tying; a *hard* prior of translation equivariance |
-| **Bagging / ensembles** | averaging $M$ independently-trained nets reduces variance by $\approx 1/M$ when errors are uncorrelated |
-| **Multi-task learning** | shared representation acts as a prior |
-| **Stochastic depth** | randomly skip residual blocks |
-| **Gradient noise** | add $\mathcal N(0,\sigma_t^2)$ to gradients, $\sigma_t^2=\eta/(1+t)^\gamma$ |
-| **Sharpness-aware min. (SAM)** | minimise worst-case loss in an $\ell_2$ ball ⇒ flat minima |
+| 7 | Multi-layer neural networks — architecture and why depth helps |
+| 8 | Solving the XOR problem with a 2-layer network |
+| 9 | Backpropagation — Part 1: the forward pass (with numerical example) |
+| 10 | Backpropagation — Part 2: the backward pass (continuing the numerical example) |
+| 11 | Cost functions and Gradient Descent (batch / stochastic / mini-batch) |
+| 12 | Overfitting and Regularization techniques + unit wrap-up |
 
 ---
 
-## 9. Weight Initialization (Xavier & He Derivations)
+## Lecture 7: Multi-Layer Neural Networks
 
-**Why not zeros?** All units in a layer compute the same thing, receive the same gradient, and stay identical forever — the **symmetry-breaking problem**. Why not large random? Saturation / explosion.
+### 7.1 Why one layer is not enough
 
-### 9.1 Xavier / Glorot (for tanh, sigmoid — symmetric, $\varphi'(0)\approx1$)
+Recall from Unit I: a single neuron/perceptron can only separate data using **one straight line** (or, in higher dimensions, one flat plane). Many real-world problems — including something as simple as XOR — need a **bent or curved boundary**, which a single layer simply cannot draw.
 
-**Forward requirement:** keep $\mathrm{Var}(z^{(\ell)}) = \mathrm{Var}(z^{(\ell-1)})$.
+**The fix:** stack neurons into multiple layers. Each hidden layer bends the decision boundary a little more, so a network with enough hidden neurons can approximate almost any shape of boundary.
 
-With $z_i = \sum_{j=1}^{n_{\text{in}}} w_{ij}a_j$, independent zero-mean $w$ and $a$:
-$$
-\mathrm{Var}(z) = n_{\text{in}}\mathrm{Var}(w)\mathrm{Var}(a)
-\;\Rightarrow\; \mathrm{Var}(w) = \frac{1}{n_{\text{in}}} .
-$$
-
-**Backward requirement:** keep $\mathrm{Var}(\delta^{(\ell)}) = \mathrm{Var}(\delta^{(\ell+1)})$. By BP2 (with $\varphi'\approx1$):
-$$
-\mathrm{Var}(\delta^{(\ell)}) = n_{\text{out}}\mathrm{Var}(w)\mathrm{Var}(\delta^{(\ell+1)})
-\;\Rightarrow\;\mathrm{Var}(w) = \frac{1}{n_{\text{out}}} .
-$$
-
-The two cannot both hold unless $n_{\text{in}}=n_{\text{out}}$; Glorot takes the **harmonic compromise**:
-
-$$
-\boxed{\;\mathrm{Var}(w) = \frac{2}{n_{\text{in}} + n_{\text{out}}}\;}
-$$
-
-Uniform form: $w \sim \mathcal U\!\left[-\sqrt{\dfrac{6}{n_{\text{in}}+n_{\text{out}}}},\; \sqrt{\dfrac{6}{n_{\text{in}}+n_{\text{out}}}}\right]$ (since $\mathrm{Var}(\mathcal U[-a,a]) = a^2/3$).
-
-### 9.2 He / Kaiming (for ReLU)
-
-ReLU zeroes half of the pre-activations. If $z$ is symmetric about 0,
-$$
-\mathbb E[\text{ReLU}(z)^2] = \tfrac12\mathbb E[z^2] \Rightarrow \mathrm{Var}(a) = \tfrac12\mathrm{Var}(z).
-$$
-Substituting into the forward variance condition:
-$$
-\mathrm{Var}(z^{(\ell)}) = n_{\text{in}}\mathrm{Var}(w)\cdot\tfrac12\mathrm{Var}(z^{(\ell-1)}) \;\overset{!}{=}\; \mathrm{Var}(z^{(\ell-1)})
-$$
-$$
-\boxed{\;\mathrm{Var}(w) = \frac{2}{n_{\text{in}}}\;\;\;\Big(w\sim\mathcal N\!\left(0, \sqrt{2/n_{\text{in}}}^2\right)\Big)}
-$$
-
-Without the factor 2, activations shrink by $2^{-L/2}$; for $L=30$ that is $\approx 3\times10^{-5}$ — the network is effectively dead at initialisation. **This one factor of 2 made 30-layer networks trainable.**
-
-**Other schemes:** LSUV (data-driven layer-wise rescaling), orthogonal init ($\mathbf W^{\mathsf T}\mathbf W=\mathbf I$, ideal for RNNs — preserves norms exactly), and zero-init of the last BN $\gamma$ in each residual block.
-
----
-
-## 10. Practical Training Recipe & Debugging
+### 7.2 The multi-layer perceptron (MLP) architecture
 
 ```
-1. Sanity check     : overfit 1 batch (loss → 0). If not, there's a bug.
-2. Initial loss     : for C-class CE it must start near ln(C). C=10 → 2.303
-3. Gradient check   : central differences, rel. error < 1e-7 (float64)
-4. LR range test    : sweep η ×10 from 1e-6 → 1; pick just below divergence
-5. Add regularisation: weight decay → dropout → augmentation, one at a time
-6. Monitor          : train/val loss curves, gradient norms per layer,
-                      activation histograms (watch for dead ReLUs / saturation)
-7. Diagnose:
-     train↑ val↑    → underfit  : bigger model, longer, higher LR
-     train↓ val↑    → overfit   : more data/aug, more regularisation, smaller model
-     loss = NaN     → explode   : lower LR, clip grads, check log(0) / div-by-0
-     loss flat      → dead      : check init, dead ReLUs, LR too small
-     spiky val loss → LR too high or batch too small
+ INPUT LAYER        HIDDEN LAYER          OUTPUT LAYER
+
+   x1 ●───┐      ┌──►● h1 ──┐         ┌──►● y1
+          ├──────┤          ├─────────┤
+   x2 ●───┤      ├──►● h2 ──┤         ├──►● y2
+          ├──────┤          ├─────────┤
+   x3 ●───┘      └──►● h3 ──┘         └──►● y3
+                  (weights W1,          (weights W2,
+                   bias b1)              bias b2)
+
+     ───────────── data flows forward ─────────────►
 ```
 
-**Loss must start at $\ln C$:** at init, softmax outputs $\approx 1/C$, so $\mathcal L = -\ln(1/C) = \ln C$. If your MNIST run starts at 7.0 instead of 2.303, your initialisation or label encoding is broken.
+- **Input layer:** just holds the raw feature values, no computation.
+- **Hidden layer(s):** each hidden neuron computes a weighted sum of the *previous* layer's outputs, then applies an activation function (sigmoid, tanh, or ReLU — see Unit I, Lecture 6).
+- **Output layer:** produces the final prediction (a class probability, or a number).
+
+Because every connection only sends data **forward** (input → hidden → output, never backward), this is called a **feedforward network**.
+
+### 7.3 Simple notation we will use in this unit
+
+To avoid confusing formulas, we will use plain, readable notation:
+
+| Symbol | Meaning |
+|---|---|
+| x1, x2, … | Input values |
+| w (with a superscript layer number, e.g. w¹, w²) | Weights of a given layer |
+| b¹, b² | Bias of a given layer |
+| z | Weighted sum before activation ("net input") |
+| a (or h for hidden, y for output) | Value *after* activation |
+| f() | The activation function used |
+| t (target) | The correct/desired output we want the network to learn |
+| E (error/loss) | A number describing how wrong the output is |
+| η (eta) | The learning rate |
+
+**General rule for any layer:**
+```
+z = (weights of this layer) · (outputs of previous layer) + (bias of this layer)
+a = f(z)
+```
+We simply repeat this, layer after layer, until we reach the output.
+
+### 7.4 Counting parameters (a quick sanity-check skill)
+
+For a layer that takes n inputs and produces m outputs, the number of weights is n×m, plus m biases (one bias per output neuron in that layer).
+
+**Example:** A network with 3 inputs → 4 hidden neurons → 2 output neurons has:
+- Layer 1 (input→hidden): 3×4 = 12 weights + 4 biases = 16 parameters
+- Layer 2 (hidden→output): 4×2 = 8 weights + 2 biases = 10 parameters
+- **Total: 26 learnable parameters**
+
+This is a useful habit: before training any network, always work out how many numbers it actually needs to learn.
+
+**Takeaway for Lecture 7:** An MLP is just several layers of neurons stacked together, where each layer's output feeds the next layer's input. More layers (depth) allow the network to build more complex, curved decision boundaries.
 
 ---
 
-## 11. Solved Numericals
+## Lecture 8: Solving the XOR Problem with a 2-Layer Network
 
-### N1. Forward pass with ReLU + softmax, and the CE gradient
+### 8.1 Recap: why XOR fails for one layer
 
-Network 3–2–3. $\mathbf x = (1, 0.5, -1)^{\mathsf T}$, true class $= 2$ (index from 1).
+XOR truth table: (0,0)→0, (0,1)→1, (1,0)→1, (1,1)→0. As shown in Unit I, no single straight line separates the "0" outputs from the "1" outputs.
 
-$$
-\mathbf W^{(1)} = \begin{pmatrix}0.2 & -0.5 & 0.3\\ 0.7 & 0.1 & -0.4\end{pmatrix},\;
-\mathbf b^{(1)} = \begin{pmatrix}0.1\\ -0.2\end{pmatrix},\qquad
-\mathbf W^{(2)}=\begin{pmatrix}0.5 & -0.3\\ -0.2 & 0.8\\ 0.6 & 0.1\end{pmatrix},\;
-\mathbf b^{(2)} = \begin{pmatrix}0\\0.1\\-0.1\end{pmatrix}
-$$
+### 8.2 A worked 2-layer solution (with real numbers, step activation)
 
-**Hidden:**
-$$
-z^{(1)}_1 = 0.2(1) + (-0.5)(0.5) + 0.3(-1) + 0.1 = 0.2 - 0.25 - 0.3 + 0.1 = -0.25 \Rightarrow a_1 = 0
-$$
-$$
-z^{(1)}_2 = 0.7(1) + 0.1(0.5) + (-0.4)(-1) - 0.2 = 0.7+0.05+0.4-0.2 = 0.95 \Rightarrow a_2 = 0.95
-$$
-So $\mathbf a^{(1)} = (0,\,0.95)^{\mathsf T}$ — **unit 1 is inactive**, and will receive zero gradient this step.
+We build a small feedforward network with **2 hidden neurons** and **1 output neuron**, using the step activation function (fires 1 if z ≥ 0, else 0):
 
-**Output logits:**
-$$
-z^{(2)} = \begin{pmatrix}0.5(0)+(-0.3)(0.95)+0\\ -0.2(0)+0.8(0.95)+0.1 \\ 0.6(0)+0.1(0.95)-0.1\end{pmatrix}
-= \begin{pmatrix}-0.285\\ 0.860\\ -0.005\end{pmatrix}
-$$
+```
+                     ┌─────────┐
+        x1 ────┬────►│  h1 =OR │───┐
+               │      └─────────┘   │      ┌──────────┐
+               │                    ├─────►│  y = AND │───► output
+               │      ┌─────────┐   │      └──────────┘
+        x2 ────┴────►│ h2 =NAND│───┘
+                      └─────────┘
+```
 
-**Softmax** (shift by $0.860$): $(-1.145,\,0,\,-0.865)$ ⇒ $e^{\cdot} = (0.31819,\,1,\,0.42104)$, $S = 1.73923$.
-$$
-\hat{\mathbf y} = (0.18295,\; 0.57497,\; 0.24208),\qquad \textstyle\sum = 1 ✓
-$$
-$$
-\mathcal L = -\ln(0.57497) = \mathbf{0.55351}
-$$
-$$
-\boldsymbol\delta^{(2)} = \hat{\mathbf y} - \mathbf t = (0.18295,\; -0.42503,\; 0.24208)
-$$
+**Hidden neuron h1 (computes OR):** weights (1, 1), bias = −0.5
+```
+z(h1) = 1·x1 + 1·x2 − 0.5
+```
 
-**Hidden delta:**
-$$
-\mathbf W^{(2)\mathsf T}\boldsymbol\delta^{(2)} =
-\begin{pmatrix}0.5 & -0.2 & 0.6\\ -0.3 & 0.8 & 0.1\end{pmatrix}
-\begin{pmatrix}0.18295\\-0.42503\\0.24208\end{pmatrix}
-=\begin{pmatrix}0.09148+0.08501+0.14525\\ -0.05489-0.34002+0.02421\end{pmatrix}
-=\begin{pmatrix}0.32174\\ -0.37070\end{pmatrix}
-$$
-ReLU derivative: $\varphi'(z^{(1)}) = (0, 1)$ (unit 1 inactive).
-$$
-\boldsymbol\delta^{(1)} = (0.32174\times 0,\;\; -0.37070\times 1) = (0,\; -0.37070)
-$$
+**Hidden neuron h2 (computes NAND):** weights (−1, −1), bias = 1.5
+```
+z(h2) = −1·x1 − 1·x2 + 1.5
+```
 
-**Gradients:**
-$$
-\nabla_{\mathbf W^{(2)}} = \boldsymbol\delta^{(2)}\mathbf a^{(1)\mathsf T} =
-\begin{pmatrix}0.18295\\-0.42503\\0.24208\end{pmatrix}(0\;\;0.95)
-=\begin{pmatrix}0 & 0.17380\\ 0 & -0.40378\\ 0 & 0.22998\end{pmatrix}
-$$
-$$
-\nabla_{\mathbf W^{(1)}} = \boldsymbol\delta^{(1)}\mathbf x^{\mathsf T} =
-\begin{pmatrix}0\\-0.37070\end{pmatrix}(1\;\;0.5\;\;-1)
-= \begin{pmatrix}0 & 0 & 0\\ -0.37070 & -0.18535 & 0.37070\end{pmatrix}
-$$
-**Observation:** the entire first row of $\nabla_{\mathbf W^{(1)}}$ is zero — hidden unit 1 learns nothing from this sample. If it stays inactive across the whole dataset, it is a **dead ReLU**.
+**Output neuron y (computes AND of h1 and h2):** weights (1, 1), bias = −1.5
+```
+z(y) = 1·h1 + 1·h2 − 1.5
+```
 
----
+### 8.3 Step-by-step verification for all 4 inputs
 
-### N2. MSE vs Cross-Entropy gradient magnitude
+**Input (0, 0):**
+- z(h1) = 1(0)+1(0)−0.5 = −0.5 → h1 = 0 (since z<0)
+- z(h2) = −1(0)−1(0)+1.5 = 1.5 → h2 = 1 (since z≥0)
+- z(y) = 1(0)+1(1)−1.5 = −0.5 → y = 0
+- **Expected XOR(0,0) = 0 ✓**
 
-Sigmoid output, target $y=1$, prediction $\hat y = 0.01$ (confidently wrong).
+**Input (0, 1):**
+- z(h1) = 0+1−0.5 = 0.5 → h1 = 1
+- z(h2) = 0−1+1.5 = 0.5 → h2 = 1
+- z(y) = 1+1−1.5 = 0.5 → y = 1
+- **Expected XOR(0,1) = 1 ✓**
 
-| Loss | $\partial\mathcal L/\partial z$ | Value |
-|---|---|---|
-| MSE | $(\hat y - y)\hat y(1-\hat y) = (-0.99)(0.01)(0.99)$ | $-0.0098$ |
-| BCE | $\hat y - y = 0.01 - 1$ | $-0.99$ |
+**Input (1, 0):** (by symmetry with the above, h1=1, h2=1, y=1) — **Expected 1 ✓**
 
-**Ratio = 101×.** With $\hat y = 10^{-4}$: MSE gradient $\approx -10^{-4}$, BCE $\approx -1$ ⇒ ratio $\approx 10^{4}$. MSE would need ~10 000× more steps to correct the same mistake.
+**Input (1, 1):**
+- z(h1) = 1+1−0.5 = 1.5 → h1 = 1
+- z(h2) = −1−1+1.5 = −0.5 → h2 = 0
+- z(y) = 1+0−1.5 = −0.5 → y = 0
+- **Expected XOR(1,1) = 0 ✓**
+
+All four cases match. **This proves that a 2-layer network can solve a problem that no single-layer network can solve.**
+
+### 8.4 The geometric intuition
+
+Each hidden neuron (h1, h2) draws its own straight line in the input space. The output neuron then combines these two lines using a simple AND-like rule. The overall effect is a **bent boundary** made of two straight-line pieces — something a single neuron could never draw by itself. This is exactly why adding hidden layers gives a network so much more power.
+
+**Takeaway for Lecture 8:** By combining two simple straight-line classifiers (in the hidden layer) with one more classifier (in the output layer), we can represent shapes that a single straight line cannot — this is the core reason multi-layer networks are needed.
 
 ---
 
-### N3. $L_2$ shrinkage factors
+## Lecture 9: Backpropagation — Part 1 (The Forward Pass)
 
-$\mathbf H$ has eigenvalues $\lambda = (100,\;10,\;1,\;0.1,\;0.01)$; take $\lambda_{\text{reg}} = 1$.
+### 9.1 The problem backpropagation solves
 
-| $\lambda_i$ | Shrinkage $\dfrac{\lambda_i}{\lambda_i+1}$ | Effect |
-|---|---|---|
-| 100 | 0.990 | essentially unchanged |
-| 10 | 0.909 | mildly shrunk |
-| 1 | 0.500 | halved |
-| 0.1 | 0.091 | strongly suppressed |
-| 0.01 | 0.0099 | ≈ eliminated |
+In Lecture 8, we *manually chose* good weights to solve XOR. In practice, we don't know the right weights in advance — we must **learn** them from data. **Backpropagation** is simply an efficient method for computing how much each weight in a multi-layer network should change, by working backward from the error at the output.
 
-Directions the data barely constrains are removed — exactly the intended behaviour.
+**The overall training loop (for any network, any dataset):**
 
----
+1. **Forward pass:** feed the input through the network, layer by layer, to get a prediction.
+2. **Compute the error:** compare the prediction to the target/desired value.
+3. **Backward pass:** work backward from the output to figure out how much each weight contributed to the error.
+4. **Update weights:** nudge each weight slightly in the direction that reduces the error.
+5. Repeat for many examples, many times (epochs), until the error becomes small.
 
-### N4. $L_1$ soft-thresholding
+This lecture covers Step 1 and 2 (forward pass + error). Lecture 10 covers Steps 3 and 4 (backward pass + update).
 
-$w^\star = (2.0,\,0.3,\,-0.05,\,-1.2)$, diagonal Hessian $h_i = 1$ for all $i$, $\lambda = 0.4$.
+### 9.2 Our example network for this worked problem
 
-$$
-\tilde w_i = \mathrm{sgn}(w_i^\star)\max(|w_i^\star| - 0.4,\,0)
-$$
+We will use a small, standard network: **2 inputs → 2 hidden neurons → 1 output neuron**, all using the **sigmoid** activation function.
 
-| $w_i^\star$ | $\lvert w_i^\star\rvert -0.4$ | $\tilde w_i$ |
-|---|---|---|
-| 2.00 | 1.60 | **1.60** |
-| 0.30 | −0.10 → 0 | **0** (pruned) |
-| −0.05 | −0.35 → 0 | **0** (pruned) |
-| −1.20 | 0.80 | **−0.80** |
+```
+   Inputs          Hidden layer            Output layer
 
-**Sparsity = 50 %.** Under $L_2$ with $\lambda=0.4$: $\tilde w = w^\star/1.4 = (1.43,\,0.214,\,-0.036,\,-0.857)$ — nothing is exactly zero.
+   i1=0.05 ──w1=0.15──┐
+                       ├──► h1 (bias bh1=0.35)
+   i2=0.10 ──w2=0.20──┘         │
+                                 w5=0.40
+   i1=0.05 ──w3=0.25──┐         │
+                       ├──► h2 (bias bh2=0.35) ──► o (bias bo=0.60) ──► output
+   i2=0.10 ──w4=0.30──┘         │
+                                 w6=0.45
+```
 
----
+**All the numbers we'll use:**
+```
+Inputs:            i1 = 0.05,  i2 = 0.10
+Input→Hidden:      w1 = 0.15,  w2 = 0.20,  w3 = 0.25,  w4 = 0.30
+Hidden biases:     bh1 = 0.35,  bh2 = 0.35
+Hidden→Output:     w5 = 0.40,  w6 = 0.45
+Output bias:       bo = 0.60
+Target output:     t = 0.01
+Learning rate:     η = 0.5
+```
 
-### N5. Early stopping ↔ $L_2$ equivalence, numerically
+### 9.3 Step-by-step forward pass
 
-Training with $\eta = 0.01$, stopping at $\tau = 250$ iterations.
-$$
-\lambda_{\text{implicit}} \approx \frac{1}{\eta\tau} = \frac{1}{0.01\times250} = \mathbf{0.4}
-$$
-Verify on a direction with $\lambda_i = 5$:
-- Early stopping factor: $1-(1-\eta\lambda_i)^\tau = 1-(1-0.05)^{250} = 1 - 0.95^{250}$.
-  $\ln(0.95^{250}) = 250\ln0.95 = 250(-0.051293) = -12.823 \Rightarrow 0.95^{250}=2.7\times10^{-6}$. Factor $\approx 0.9999973$.
-- $L_2$ factor: $\lambda_i/(\lambda_i+\lambda) = 5/5.4 = 0.9259$.
+**Step 1 — Compute the net input to hidden neuron h1:**
+```
+z(h1) = w1×i1 + w2×i2 + bh1
+      = (0.15×0.05) + (0.20×0.10) + 0.35
+      = 0.0075 + 0.02 + 0.35
+      = 0.3775
+```
 
-Now a low-curvature direction, $\lambda_i = 0.01$:
-- Early stopping: $1-(1-0.0001)^{250} = 1-e^{-0.025} = 0.02469$.
-- $L_2$: $0.01/0.41 = 0.02439$.
+**Step 2 — Apply the sigmoid activation to get h1's output:**
+```
+h1 = 1 / (1 + e^(-0.3775))
+e^(-0.3775) ≈ 0.6856
+h1 = 1 / 1.6856 ≈ 0.5933
+```
 
-The two agree closely in the small-curvature regime where regularization actually matters ✓.
+**Step 3 — Compute the net input to hidden neuron h2:**
+```
+z(h2) = w3×i1 + w4×i2 + bh2
+      = (0.25×0.05) + (0.30×0.10) + 0.35
+      = 0.0125 + 0.03 + 0.35
+      = 0.3925
+```
 
----
+**Step 4 — Apply sigmoid to get h2's output:**
+```
+h2 = 1 / (1 + e^(-0.3925))
+e^(-0.3925) ≈ 0.6754
+h2 = 1 / 1.6754 ≈ 0.5968
+```
 
-### N6. Dropout expectation and variance
+**Step 5 — Compute the net input to the output neuron:**
+```
+z(o) = w5×h1 + w6×h2 + bo
+     = (0.40×0.5933) + (0.45×0.5968) + 0.60
+     = 0.2373 + 0.2686 + 0.60
+     = 1.1059
+```
 
-A layer of $n=100$ units with activation $a=1$ each, keep probability $p = 0.5$, inverted dropout, next-layer weights $w_j = 0.1$.
+**Step 6 — Apply sigmoid to get the final output:**
+```
+o = 1 / (1 + e^(-1.1059))
+e^(-1.1059) ≈ 0.3308
+o = 1 / 1.3308 ≈ 0.7514
+```
 
-Without dropout: $z = \sum_j w_j a_j = 100(0.1)(1) = 10$.
-With dropout: $z = \sum_j w_j \frac{r_j}{p}a_j = 0.2\sum_j r_j$, $r_j\sim\text{Ber}(0.5)$.
-$$
-\mathbb E[z] = 0.2\times 100 \times 0.5 = \mathbf{10}\quad ✓\;(\text{unbiased})
-$$
-$$
-\mathrm{Var}(z) = 0.2^2\times 100\times p(1-p) = 0.04\times100\times0.25 = 1 \Rightarrow \text{SD}=1
-$$
-So the injected multiplicative noise has ~10 % relative magnitude — a substantial but not destructive perturbation, which is exactly the regularizing signal.
+### 9.4 Computing the error
 
----
+We use the standard "half squared error" (the ½ is just there to make the derivative clean later):
+```
+E = ½ × (t − o)²
+  = ½ × (0.01 − 0.7514)²
+  = ½ × (−0.7414)²
+  = ½ × 0.5497
+  = 0.2749
+```
 
-### N7. He vs Xavier initialisation through 20 ReLU layers
+Our network currently predicts 0.7514, but we wanted 0.01 — a large error. In Lecture 10, we will work backward through the network to figure out exactly how to adjust every single weight to reduce this error.
 
-Layer width $n=512$, ReLU.
-- **Xavier** ($\mathrm{Var}(w) = 1/n$ forward form): per layer, $\mathrm{Var}(z^{(\ell)}) = n\cdot\frac1n\cdot\frac12\mathrm{Var}(z^{(\ell-1)}) = \frac12 \mathrm{Var}(z^{(\ell-1)})$.
-  After 20 layers: factor $2^{-20} = 9.5\times 10^{-7}$ — activations vanish.
-- **He** ($\mathrm{Var}(w)=2/n$): $\mathrm{Var}(z^{(\ell)}) = n\cdot\frac2n\cdot\frac12\mathrm{Var}(z^{(\ell-1)}) = \mathrm{Var}(z^{(\ell-1)})$.
-  After 20 layers: factor $1.0$ — perfectly preserved ✓
-
----
-
-### N8. Bias–variance numerically
-
-Three models trained on 100 bootstrap samples, evaluated at one test point with $f(x)=2.0$, $\sigma^2=0.1$:
-
-| Model | $\bar f(x)$ | $\mathrm{Var}(\hat f)$ | Bias² | Total = Bias²+Var+σ² |
-|---|---|---|---|---|
-| Linear (degree 1) | 1.20 | 0.02 | $(2.0-1.2)^2 = 0.64$ | 0.76 |
-| Degree 4 | 1.95 | 0.15 | 0.0025 | **0.2525** |
-| Degree 15 | 2.01 | 1.40 | 0.0001 | 1.5001 |
-
-The degree-4 model wins — not because it has the lowest bias or lowest variance, but the best **sum**.
-
----
-
-### N9. Number of linear regions
-
-A ReLU MLP with $n=2$ inputs, $L=4$ hidden layers of width $w=10$:
-$$
-\mathcal R \ge \left\lfloor \tfrac{10}{2}\right\rfloor^{2(4-1)}\sum_{j=0}^{2}\binom{10}{j}
-= 5^{6}\,(1 + 10 + 45) = 15\,625 \times 56 = \mathbf{875\,000}
-$$
-A single hidden layer with the same total $40$ units gives at most $\sum_{j=0}^{2}\binom{40}{j} = 1+40+780 = \mathbf{821}$.
-**Depth buys ~1000× more regions with identical parameter budget.**
-
----
-
-## 12. Viva / Exam Pointers
-
-**Likely long questions**
-1. Derive the four backpropagation equations from first principles; state the computational complexity.
-2. Solve XOR with a 2-2-1 network (threshold and ReLU); explain why one layer fails.
-3. Derive the bias–variance decomposition.
-4. Show that $L_1$ produces exact zeros (soft-thresholding) while $L_2$ does not.
-5. Prove that early stopping is equivalent to $L_2$ regularization with $\lambda \approx 1/(\eta\tau)$.
-6. Derive the Xavier and He initialisation variances.
-7. Show that sigmoid+BCE (and softmax+CCE) eliminate the learning-slowdown factor.
-8. Complete one full forward–backward–update pass on a small network (numerical).
-
-**Traps**
-- $\delta$ is $\partial\mathcal L/\partial z$ (**pre**-activation), not $\partial\mathcal L/\partial a$.
-- BP2 uses $\mathbf W^{(\ell+1)\mathsf T}$ — the weights of the layer **ahead**, not the current layer.
-- With softmax output the delta uses the **full Jacobian**; only with CE does it simplify to $\hat y - t$.
-- Dropout scaling: inverted dropout scales at **train** time by $1/p$; classical dropout scales at test time by $p$. Do not do both.
-- BatchNorm at inference uses **running statistics**, not batch statistics.
-- Bias terms are not usually $L_2$-regularized (they don't cause overfitting and regularizing them adds bias).
-
-**One-line formula sheet**
-
-$$
-\boldsymbol\delta^{(L)} = \nabla_a\mathcal L\odot\varphi'(z^{(L)}) \;\;|\;\;
-\boldsymbol\delta^{(\ell)} = (W^{(\ell+1)\mathsf T}\boldsymbol\delta^{(\ell+1)})\odot\varphi'(z^{(\ell)}) \;\;|\;\;
-\nabla_{W^{(\ell)}} = \boldsymbol\delta^{(\ell)}a^{(\ell-1)\mathsf T}
-$$
-$$
-\mathbb E[(y-\hat f)^2] = \text{Bias}^2 + \text{Var} + \sigma^2 \;\;|\;\;
-\tilde w_i^{L_2} = \tfrac{\lambda_i}{\lambda_i+\lambda}w_i^\star \;\;|\;\;
-\tilde w_i^{L_1} = \mathrm{sgn}(w^\star_i)(|w^\star_i|-\lambda/h_i)_+
-$$
-$$
-\lambda_{\text{early-stop}}\approx \tfrac{1}{\eta\tau}\;\;|\;\;
-\mathrm{Var}(w)_{\text{He}} = 2/n_{\text{in}}\;\;|\;\;
-\mathrm{Var}(w)_{\text{Xavier}} = 2/(n_{\text{in}}+n_{\text{out}}) \;\;|\;\;
-0<\eta<2/\lambda_{\max}
-$$
+**Takeaway for Lecture 9:** The forward pass is nothing more than repeatedly applying "weighted sum → activation" layer by layer. Once we reach the output, we measure how wrong we are using an error/loss function.
 
 ---
 
-*Previous: [Unit I](./Unit-1.md) · Next: [Unit III: Feedbackward Neural Networks](./Unit-3.md)*
+## Lecture 10: Backpropagation — Part 2 (The Backward Pass)
+
+We continue the exact same example from Lecture 9. Our goal now is to find out how much each of the 6 weights (w1–w6) and 3 biases should change to reduce the error E = 0.2749.
+
+### 10.1 The key idea: the chain rule, applied one layer at a time
+
+We cannot directly see how, say, w1 affects the final error E — there are two layers of "activation function" in between. The chain rule lets us break this long connection into small, easy steps:
+```
+(how E changes with a weight) = (how E changes with the neuron's output)
+                               × (how the neuron's output changes with its net input z)
+                               × (how the net input z changes with that weight)
+```
+We compute this **starting from the output layer and moving backward** — hence "back"-propagation.
+
+### 10.2 Output layer: compute delta_o
+
+**Step 1 — How does the error change with the output o?**
+```
+dE/do = −(t − o) = −(0.01 − 0.7514) = 0.7414
+```
+
+**Step 2 — How does the output o change with its net input z(o)?** (This is the sigmoid derivative: f'(z) = f(z)×(1−f(z)), using the already-computed output value.)
+```
+do/dz(o) = o × (1 − o) = 0.7514 × (1 − 0.7514) = 0.7514 × 0.2486 = 0.1868
+```
+
+**Step 3 — Combine these into "delta_o" (the output layer's error signal):**
+```
+delta_o = (dE/do) × (do/dz(o)) = 0.7414 × 0.1868 = 0.1385
+```
+
+### 10.3 Gradients for the output layer's weights and bias
+
+The net input to the output neuron was z(o) = w5×h1 + w6×h2 + bo, so:
+```
+dE/dw5 = delta_o × h1 = 0.1385 × 0.5933 = 0.0822
+dE/dw6 = delta_o × h2 = 0.1385 × 0.5968 = 0.0826
+dE/dbo = delta_o × 1  = 0.1385
+```
+
+### 10.4 Update the output layer's weights (gradient descent step)
+
+**Rule: new weight = old weight − η × gradient**
+```
+w5_new = 0.40 − 0.5×0.0822 = 0.40 − 0.0411 = 0.3589
+w6_new = 0.45 − 0.5×0.0826 = 0.45 − 0.0413 = 0.4087
+bo_new = 0.60 − 0.5×0.1385 = 0.60 − 0.0693 = 0.5307
+```
+
+### 10.5 Hidden layer: compute delta_h1 and delta_h2
+
+Now we push the error signal one layer further back. Each hidden neuron's delta depends on **how much it contributed to the output neuron's error**, via the weight connecting them (using the *old* weight values, before the update above):
+
+```
+delta_h1 = delta_o × w5(old) × h1 × (1 − h1)
+         = 0.1385 × 0.40 × 0.5933 × (1 − 0.5933)
+         = 0.1385 × 0.40 × 0.5933 × 0.4067
+         = 0.1385 × 0.40 × 0.2413
+         = 0.01337
+
+delta_h2 = delta_o × w6(old) × h2 × (1 − h2)
+         = 0.1385 × 0.45 × 0.5968 × (1 − 0.5968)
+         = 0.1385 × 0.45 × 0.5968 × 0.4032
+         = 0.1385 × 0.45 × 0.2406
+         = 0.01500
+```
+
+**Why does this formula make sense?** delta_o × w5 tells us "how much of the output's error can be traced back through the h1→output connection," and multiplying by h1×(1−h1) accounts for h1's own sigmoid activation.
+
+### 10.6 Gradients for the hidden layer's weights and biases
+
+Recall z(h1) = w1×i1 + w2×i2 + bh1, so:
+```
+dE/dw1 = delta_h1 × i1 = 0.01337 × 0.05 = 0.000669
+dE/dw2 = delta_h1 × i2 = 0.01337 × 0.10 = 0.001337
+dE/dbh1 = delta_h1 × 1 = 0.01337
+```
+And z(h2) = w3×i1 + w4×i2 + bh2, so:
+```
+dE/dw3 = delta_h2 × i1 = 0.01500 × 0.05 = 0.000750
+dE/dw4 = delta_h2 × i2 = 0.01500 × 0.10 = 0.001500
+dE/dbh2 = delta_h2 × 1 = 0.01500
+```
+
+### 10.7 Update the hidden layer's weights and biases
+
+```
+w1_new  = 0.15 − 0.5×0.000669 = 0.149666
+w2_new  = 0.20 − 0.5×0.001337 = 0.199332
+w3_new  = 0.25 − 0.5×0.000750 = 0.249625
+w4_new  = 0.30 − 0.5×0.001500 = 0.299250
+bh1_new = 0.35 − 0.5×0.01337  = 0.343315
+bh2_new = 0.35 − 0.5×0.01500  = 0.342500
+```
+
+### 10.8 Did the error actually go down? Let's check!
+
+Run the forward pass again with the **new** weights:
+```
+z(h1)_new = 0.149666×0.05 + 0.199332×0.10 + 0.343315 ≈ 0.37077  → h1_new ≈ 0.5917
+z(h2)_new = 0.249625×0.05 + 0.299250×0.10 + 0.342500 ≈ 0.38491  → h2_new ≈ 0.5951
+z(o)_new  = 0.3589×0.5917 + 0.4087×0.5951 + 0.5307   ≈ 0.98635  → o_new  ≈ 0.7284
+
+New error: E_new = ½×(0.01 − 0.7284)² = ½×0.5161 = 0.2581
+```
+
+**Old error was 0.2749; new error is 0.2581 — it went down!** This is exactly what we expect: one small step of backpropagation always nudges the network's weights to make the error a little smaller. Repeating this process thousands of times, over many training examples, is how a real neural network is trained.
+
+**Takeaway for Lecture 10:** Backpropagation is just the chain rule, applied one layer at a time, from the output back to the input, to find how each weight should change to reduce the error — followed by a normal gradient-descent update.
+
+---
+
+## Lecture 11: Cost Functions and Gradient Descent
+
+### 11.1 Cost functions (also called loss functions)
+
+A cost function is simply a formula that turns "how wrong the network's prediction is" into a single number we can try to minimise.
+
+**Mean Squared Error (MSE)** — used for regression (predicting a number):
+```
+MSE = (1/N) × Σ (target_i − prediction_i)²
+```
+Squaring makes all errors positive and penalises large mistakes more heavily than small ones.
+
+**Cross-Entropy Loss** — used for classification (predicting a category):
+```
+For binary classification:
+CE = − [ t×log(o) + (1−t)×log(1−o) ]
+```
+This penalises confident wrong answers very heavily (e.g., if the true label is 1 but the model outputs 0.01, log(0.01) is a large negative number, making the loss huge) and rewards confident correct answers with a very small loss.
+
+**Rule of thumb:** use MSE for regression problems, and cross-entropy for classification problems.
+
+### 11.2 Gradient Descent — the big picture
+
+Imagine you are standing on a hilly landscape in thick fog and want to reach the lowest point (minimum error). You cannot see the whole landscape, but you can feel the slope of the ground right where you're standing. The sensible strategy: **take a small step in the direction that goes downhill**, and repeat.
+
+This is exactly what gradient descent does:
+```
+new_weight = old_weight − η × (gradient of error with respect to that weight)
+```
+- The **gradient** tells us the slope (which direction is "uphill").
+- We move in the *opposite* direction (downhill), because we want to *decrease* the error.
+- η (the learning rate) controls how big a step we take. Too large, and we might overshoot the minimum; too small, and training takes forever.
+
+### 11.3 A tiny numerical example of gradient descent (without any neural network, just to build intuition)
+
+Suppose we want to minimise a very simple function: f(w) = (w − 3)². Its minimum is obviously at w = 3, but let's *find* it using gradient descent.
+
+The gradient (derivative) is: f'(w) = 2(w − 3)
+
+Start at w = 0, use learning rate η = 0.2:
+
+| Step | w (current) | f'(w) = 2(w−3) | w_new = w − η×f'(w) |
+|---|---|---|---|
+| 1 | 0.0 | 2(0−3) = −6.0 | 0 − 0.2×(−6.0) = 1.20 |
+| 2 | 1.20 | 2(1.2−3) = −3.6 | 1.20 − 0.2×(−3.6) = 1.92 |
+| 3 | 1.92 | 2(1.92−3) = −2.16 | 1.92 − 0.2×(−2.16) = 2.352 |
+| 4 | 2.352 | 2(2.352−3) = −1.296 | 2.352 − 0.2×(−1.296) = 2.6112 |
+| 5 | 2.6112 | 2(2.6112−3) = −0.7776 | 2.6112 − 0.2×(−0.7776) = 2.7667 |
+
+Notice how w keeps getting closer and closer to 3 with every step, and the corrections get smaller as we approach the minimum (because the slope flattens out near the bottom). This is *exactly* the same idea we used in Lecture 10, just applied there to 9 different weights at once instead of a single w.
+
+### 11.4 Batch, Stochastic, and Mini-Batch Gradient Descent
+
+When training a network, we usually have thousands (or millions) of training examples. How many examples should we look at before making one weight update?
+
+| Method | How many examples per update? | Pros | Cons |
+|---|---|---|---|
+| **Batch Gradient Descent** | *All* training examples at once | Very stable, accurate direction | Very slow for large datasets; needs lots of memory |
+| **Stochastic Gradient Descent (SGD)** | Just *one* randomly chosen example | Very fast per update; the randomness can help escape bad spots | Noisy, "zig-zag" path toward the minimum |
+| **Mini-Batch Gradient Descent** | A small random group (e.g., 32 or 64 examples) | Good balance of speed and stability; works well with GPUs | Needs to choose a good batch size |
+
+**In practice, almost everyone uses mini-batch gradient descent** — it is the standard choice in real deep-learning systems, because it's fast, reasonably stable, and can use hardware efficiently.
+
+**Takeaway for Lecture 11:** The cost function measures how wrong we are; gradient descent tells us how to change the weights to become less wrong; and mini-batch gradient descent is the practical, everyday version used to train real networks.
+
+---
+
+## Lecture 12: Overfitting and Regularization
+
+### 12.1 What is overfitting?
+
+Imagine a student preparing for an exam by **memorising** the exact answers to last year's question paper, instead of *understanding* the underlying concepts. This student will do great if the same questions repeat — but will fail badly on any new question.
+
+This is exactly what **overfitting** means for a neural network: the model learns the training data so precisely (including its noise and quirks) that it performs very well on the training data but poorly on new, unseen data.
+
+```
+   Error
+    │                                 ___________ Validation/Test error
+    │                                /            (starts going UP - overfitting!)
+    │                               /
+    │       Training error \___    /
+    │                       \___\_/
+    │                           \________  Training error keeps going DOWN
+    └──────────────────────────────────────► Training time (epochs)
+                              ↑
+                    Ideal stopping point
+```
+
+### 12.2 Why does overfitting happen?
+
+- The model has **too much capacity** (too many neurons/layers) relative to how much training data is available — it has "room" to memorise instead of generalise.
+- Training runs for **too long**, letting the model gradually fit noise in the data.
+
+### 12.3 Regularization Technique 1: L2 Regularization (Weight Decay)
+
+**Idea:** discourage the network from using very large weights, since large weights often mean the model is fitting the training data too precisely (overreacting to small changes in input).
+
+We simply add a penalty to the cost function based on the size of the weights:
+```
+New Cost = Original Cost + (λ/2) × (sum of all squared weights)
+```
+λ (lambda) is a small positive number we choose — the bigger λ is, the more strongly we discourage large weights.
+
+**Effect on the weight update:** working through the calculus gives this simple modified update rule:
+```
+w_new = w_old − η×(gradient of original cost) − η×λ×w_old
+```
+which can be rewritten as:
+```
+w_new = (1 − ηλ)×w_old − η×(gradient of original cost)
+```
+
+**Tiny numerical example:** suppose w_old = 0.5, the gradient of the original cost is 0.02, η = 0.1, λ = 0.1:
+```
+Without regularization: w_new = 0.5 − 0.1×0.02 = 0.5 − 0.002 = 0.498
+With L2 regularization: w_new = (1 − 0.1×0.1)×0.5 − 0.1×0.02
+                               = (0.99)×0.5 − 0.002
+                               = 0.495 − 0.002 = 0.493
+```
+Notice the weight shrinks a little bit *extra*, every single update — this constant, gentle shrinkage is why L2 regularization is also called **"weight decay."**
+
+### 12.4 Regularization Technique 2: L1 Regularization
+
+**Idea:** similar to L2, but the penalty is based on the *absolute value* of weights instead of the square:
+```
+New Cost = Original Cost + λ × (sum of |weights|)
+```
+**Key difference from L2:** L1 regularization tends to push many weights all the way to exactly **zero**, effectively removing some connections entirely. This makes L1 useful when we want the network to automatically ignore unimportant input features (a kind of automatic feature selection). L2, on the other hand, just makes all weights *a bit smaller*, rather than eliminating them.
+
+### 12.5 Regularization Technique 3: Dropout
+
+**Idea:** during training, randomly "switch off" (set to zero) a fraction of the hidden neurons in a layer for each training example.
+
+```
+Normal layer:        With dropout (50%, this pass):
+  ● ● ● ● ●              ● x ● x ●     (the x'd neurons are ignored this time)
+```
+
+This forces the network to *not rely too heavily* on any single neuron, since that neuron might be switched off next time. It effectively trains many slightly different "thinned" networks and averages their behaviour — this makes the final model much more robust and less likely to overfit. A typical dropout rate is 20–50%. (Dropout is only applied during training; at test time, all neurons are used.)
+
+### 12.6 Regularization Technique 4: Early Stopping
+
+**Idea:** keep a separate small chunk of data (the "validation set") that is *not* used for training. After every epoch, check the error on this validation set. As training continues, training error always keeps falling, but validation error will eventually start rising again (see the graph in section 12.1) — this is the moment overfitting begins. **Early stopping simply means: stop training at that point**, and keep the weights from the best validation-error epoch, rather than the final epoch.
+
+### 12.7 Putting it all together
+
+In practice, these techniques are often combined:
+- Use a reasonably sized network (not excessively large for the amount of data available).
+- Apply L2 regularization and/or dropout during training.
+- Monitor validation error and use early stopping.
+
+This combination attacks overfitting from three different angles: keeping weights small (L2), preventing over-reliance on individual neurons (dropout), and stopping training at the right time (early stopping).
+
+### 12.8 Unit summary
+
+- Multi-layer networks solve problems (like XOR) that single-layer models cannot, by combining multiple straight-line decisions.
+- Backpropagation trains a multi-layer network by computing, layer by layer from the output backward, how much each weight should change — using the chain rule.
+- Cost functions (MSE for regression, cross-entropy for classification) measure how wrong the network is.
+- Gradient descent (batch / stochastic / mini-batch) uses these error signals to gradually improve the weights; mini-batch is the standard practical choice.
+- Overfitting happens when a network memorises training data instead of learning general patterns; L1/L2 regularization, dropout, and early stopping are the standard defences.
+
+### 12.9 Practice questions for self-study
+
+1. Repeat the backpropagation numerical example from Lectures 9–10, but change the target to t = 0.99 instead of t = 0.01. Show all forward and backward steps.
+2. For the function f(w) = (w−5)², perform 4 iterations of gradient descent by hand, starting at w=0 with η=0.3.
+3. Explain, in your own words, why L1 regularization tends to produce exactly-zero weights while L2 does not.
+4. A network gets 99% training accuracy but only 70% test accuracy. Name three techniques you could apply and explain briefly how each one helps.
+
+---
+
+*End of Unit II — proceed to Unit III: Feedbackward Neural Networks*
