@@ -1,830 +1,535 @@
 # Unit I — Introduction to Neural Networks
 
-> **INT511 – Neural Networks** | M.Tech Level Notes
-> **Coverage:** Overview of neural networks · Biological inspiration and artificial neurons · Types of learning · McCulloch–Pitts neural network · Perceptron · Activation functions (Threshold, Sigmoid, Tanh, ReLU, Softmax)
+**INT511 – Neural Networks (M.Tech)**
+**This unit is designed for Weeks 1–2 of the semester (6 lecture sessions, 3 lectures/week).**
+
+This unit answers four simple questions: What is a neural network? How is it inspired by the brain? How does a network "learn"? And what is the simplest possible neuron model?
 
 ---
 
-## Table of Contents
+## How this unit is paced
 
-1. [Overview of Neural Networks](#1-overview-of-neural-networks)
-2. [Biological Inspiration and Artificial Neurons](#2-biological-inspiration-and-artificial-neurons)
-3. [Types of Learning](#3-types-of-learning)
-4. [McCulloch–Pitts Neuron](#4-mcculloch–pitts-neuron)
-5. [The Perceptron](#5-the-perceptron)
-6. [Perceptron Convergence Theorem (Full Proof)](#6-perceptron-convergence-theorem-full-proof)
-7. [Capacity of a Perceptron — Cover's Counting Theorem](#7-capacity-of-a-perceptron--covers-counting-theorem)
-8. [Activation Functions](#8-activation-functions)
-9. [Solved Numericals](#9-solved-numericals)
-10. [Viva / Exam Pointers](#10-viva--exam-pointers)
+| Lecture | Topic |
+|---|---|
+| 1 | What is a Neural Network? Why do we need them? Basic building blocks |
+| 2 | Biological inspiration — from brain cell to artificial neuron |
+| 3 | Types of learning (supervised, unsupervised, reinforcement, hybrid) |
+| 4 | The McCulloch–Pitts neuron and simple logic gates |
+| 5 | The Perceptron — model and learning algorithm (with full worked example) |
+| 6 | Activation functions (threshold, sigmoid, tanh, ReLU, softmax) + unit wrap-up |
 
 ---
 
-## 1. Overview of Neural Networks
+## Lecture 1: What Is a Neural Network?
 
-### 1.1 Formal definition
+### 1.1 The everyday problem it solves
 
-An **artificial neural network (ANN)** is a parameterised, directed, weighted computational graph
-$G = (V, E)$ that realises a family of functions
+Suppose you want a computer to look at a photo and say "this is a cat" or "this is a dog." You cannot write a simple `if-else` rule for this — there is no fixed formula that separates all cat photos from all dog photos. What you *can* do is show the computer thousands of labelled photos and let it **figure out the pattern by itself**. A neural network is a mathematical structure that is very good at exactly this kind of pattern-learning.
 
-$$
-\mathcal{F}_\Theta = \{\, f_\theta : \mathcal{X} \subseteq \mathbb{R}^{n} \to \mathcal{Y} \subseteq \mathbb{R}^{m} \;\mid\; \theta \in \Theta \subseteq \mathbb{R}^{P} \,\}
-$$
+In one sentence: **a neural network is a machine-learning model, loosely inspired by the brain, that learns a mapping from inputs to outputs by adjusting internal numbers (called weights) based on examples.**
 
-where each node applies an affine map followed by a (usually non-linear) scalar function, and
-learning is the search for $\theta^\star$ minimising an empirical risk
+### 1.2 The basic building block: one neuron
 
-$$
-\theta^\star = \arg\min_{\theta \in \Theta} \; \underbrace{\frac{1}{N}\sum_{i=1}^{N} \mathcal{L}\!\left(f_\theta(x_i), y_i\right)}_{\hat{R}_{\text{emp}}(\theta)} \;+\; \lambda\,\Omega(\theta).
-$$
+Every neural network, however large, is built out of a repeating unit called a **neuron** (or **node**). A single neuron does something very simple:
 
-**Statistical learning framing.** The true objective is the *expected risk*
-$R(\theta) = \mathbb{E}_{(x,y)\sim \mathcal{D}}[\mathcal{L}(f_\theta(x), y)]$, which is inaccessible.
-The excess risk decomposes as
+1. It receives some numbers as input: x1, x2, x3, …
+2. It multiplies each input by a "weight" that says how important that input is: w1, w2, w3, …
+3. It adds all these weighted inputs together, plus one extra number called the **bias** (b), which just shifts the result up or down.
+4. It passes this sum through a small function called the **activation function**, which decides the final output.
 
-$$
-R(\hat\theta) - R^\star = \underbrace{\left(R(\hat\theta) - \inf_{\theta}R(\theta)\right)}_{\text{estimation error}} + \underbrace{\left(\inf_{\theta}R(\theta) - R^\star\right)}_{\text{approximation error}} .
-$$
+Written as a simple formula:
 
-Neural networks are attractive because the **approximation error term can be driven to zero** for a wide class of targets (Universal Approximation), while depth controls the growth of the parameter count needed to do so.
+```
+z = (w1 × x1) + (w2 × x2) + ... + (wn × xn) + b        <- weighted sum ("net input")
+y = f(z)                                                <- activation function decides output
+```
 
-### 1.2 The three defining properties
+Think of it like a decision made by weighing evidence: each input xi is a piece of evidence, wi is how much you trust that evidence, b is your baseline opinion before seeing any evidence, and f is the rule that turns the total evidence into a final yes/no or a number.
 
-| Property | Meaning | Consequence |
+**Simple picture:**
+
+```
+   x1 ---(w1)---\
+   x2 ---(w2)----->  [ SUM: z = w1x1+w2x2+w3x3+b ]  --->  [ f(z) ]  --->  y (output)
+   x3 ---(w3)---/
+```
+
+### 1.3 Why "network"? Stacking neurons in layers
+
+One neuron can only make a very simple decision. To solve harder problems, we connect many neurons together in **layers**:
+
+- **Input layer**: just holds the raw input values (no computation, just passes data forward).
+- **Hidden layer(s)**: one or more layers of neurons that do the actual computation. "Hidden" simply means we don't directly observe their output — it's an internal step.
+- **Output layer**: the final layer that gives us the answer (e.g., "cat" or "dog", or a number).
+
+```
+  INPUT LAYER      HIDDEN LAYER      OUTPUT LAYER
+
+    x1  ●---------\    ● ---------\
+                    \  |            \
+    x2  ●------------ ●  ●--------- ●   y (final answer)
+                    /  |            /
+    x3  ●---------/    ● ---------/
+
+   (every line here carries its own weight)
+```
+
+Data flows from left to right — this is why this basic type of network is called a **feedforward network**. Each connection (line) has its own weight, and every neuron has its own bias. Learning simply means: **find good values for all these weights and biases so the network's output matches what we want.**
+
+### 1.4 The three things that make neural networks special
+
+| Property | What it means | Why it matters |
 |---|---|---|
-| **Massive parallelism** | $O(10^2$–$10^{11})$ simple units acting simultaneously | Fault tolerance, graceful degradation |
-| **Distributed representation** | A concept is a *pattern of activity*, not a single unit | Robustness to unit failure, generalisation |
-| **Adaptivity** | Free parameters modified by data | Learning replaces explicit programming |
+| **Many simple units working together** | No single neuron is smart, but thousands of them together can be | If a few neurons "fail," the network still works reasonably well |
+| **Information is spread out** | A concept (e.g. "roundness") isn't stored in one neuron — it's a pattern across many neurons | The network generalises well to new, unseen examples |
+| **It adapts from data** | Weights change automatically as the network sees more examples | We don't have to hand-write rules |
 
-### 1.3 Universal Approximation Theorem (Cybenko 1989, Hornik 1991)
+### 1.5 A short, simple history (just for context)
 
-Let $\sigma:\mathbb{R}\to\mathbb{R}$ be continuous, bounded and non-constant (a *discriminatory* / non-polynomial function). Then for every $f \in C(I_n)$, $I_n=[0,1]^n$, and $\varepsilon>0$ there exist $M\in\mathbb{N}$, $\alpha_j, b_j \in \mathbb{R}$, $w_j \in \mathbb{R}^n$ such that
+You don't need to memorise this — just get a feel for the story:
 
-$$
-F(x) = \sum_{j=1}^{M} \alpha_j\, \sigma\!\left(w_j^{\mathsf T} x + b_j\right), \qquad \sup_{x\in I_n} |F(x) - f(x)| < \varepsilon .
-$$
+- **1943** — McCulloch & Pitts proposed the first simple mathematical neuron model.
+- **1958** — Rosenblatt invented the Perceptron, the first *trainable* neuron.
+- **1969** — Minsky & Papert showed a single perceptron cannot solve the XOR problem — interest in neural networks dropped for a while.
+- **1986** — The backpropagation algorithm (Unit II) became popular, allowing multi-layer networks to be trained — interest came back.
+- **2012 onward** — With more data and powerful GPUs, "deep" networks (many layers) started beating older methods dramatically, leading to today's AI boom (image recognition, ChatGPT-like models, self-driving cars, etc.)
 
-**Leshno–Pinkus (1993) sharpening:** a shallow network is universal **iff** $\sigma$ is *not* a polynomial.
-
-**Critical reading (M.Tech level).**
-- The theorem is **existential**, not constructive: it says nothing about how to *find* $\alpha_j, w_j$.
-- Width may be **exponential** in $n$: Barron's bound gives $\|f - F\|_{L^2}^2 \le C_f^2 / M$ where $C_f = \int \|\omega\|\,|\hat f(\omega)|\,d\omega$ is the *Barron constant*; for badly-behaved $f$, $C_f$ blows up.
-- **Depth separation** (Telgarsky 2016): there exist functions computable by a ReLU net of depth $k^2$ with $O(k)$ units that require $\Omega(2^{k})$ units at depth $k$. This is the theoretical justification of *deep* learning.
-
-### 1.4 Historical timeline (with the two "AI winters")
-
-```
-1943  McCulloch & Pitts     Threshold logic neuron; NN = universal Boolean machine
-1949  Hebb                  "Cells that fire together wire together" -> Hebbian rule
-1958  Rosenblatt            Perceptron + convergence theorem
-1960  Widrow & Hoff         ADALINE, LMS (delta) rule  -- first gradient method
-1969  Minsky & Papert       "Perceptrons": XOR limitation  ==> WINTER I
-1974  Werbos                Backpropagation (PhD thesis, ignored)
-1982  Hopfield              Energy function, associative memory (physics revival)
-1982  Kohonen               Self-Organizing Map
-1985  Ackley/Hinton/Sejn.   Boltzmann machine
-1986  Rumelhart/Hinton/W.   Backprop popularised (PDP volumes)
-1989  Cybenko / LeCun       UAT / CNN with backprop (LeNet)
-1995  Vapnik                SVM outperforms NNs ==> WINTER II
-1997  Hochreiter&Schmid.    LSTM
-2006  Hinton                DBN + greedy layerwise pretraining ("deep learning")
-2012  Krizhevsky            AlexNet on GPU -> ImageNet breakthrough
-2014-17 GAN, ResNet, BatchNorm, Adam, Attention/Transformer
-2018+ Self-supervised pretraining, scaling laws, foundation models
-```
+**Takeaway for Lecture 1:** A neural network is just layers of simple neurons, each doing "weighted sum → activation function," and the network learns by adjusting weights and biases from examples.
 
 ---
 
-## 2. Biological Inspiration and Artificial Neurons
+## Lecture 2: Biological Inspiration and Artificial Neurons
 
-### 2.1 The biological neuron
+### 2.1 The biological neuron (in simple terms)
 
-```
-                       Dendrites (input, ~10^4 synapses)
-                        \  |  /
-                         \ | /
-          ┌───────────────●───────────────┐
-          │           SOMA (cell body)    │   Spatio-temporal summation
-          │   V_m evolves per cable eqn   │   of post-synaptic potentials
-          └───────────────┬───────────────┘
-                          │  Axon hillock  -- threshold ≈ -55 mV
-                          │
-        ══════════════════╪══════════════════   AXON (myelinated,
-                          │                      saltatory conduction)
-                    ┌─────┴─────┐
-                Axon terminals / synaptic boutons
-                    │  neurotransmitter release
-                    ▼
-                Next neuron's dendrite
-```
+Your brain has about 86 billion neurons, and each one is a simple cell that communicates with others. It has four important parts:
 
-**Integrate-and-fire dynamics** (the biophysical ancestor of the artificial neuron):
+| Part | What it does |
+|---|---|
+| **Dendrites** | Branch-like structures that *receive* signals from other neurons |
+| **Cell body (Soma)** | *Collects and adds up* all the incoming signals |
+| **Axon** | A long fibre that *carries the output signal* away from the cell |
+| **Synapse** | The *junction* between one neuron's axon and another's dendrite — this is where the connection strength (like a "weight") lives |
 
-$$
-\tau_m \frac{dV(t)}{dt} = -\big(V(t)-V_{\text{rest}}\big) + R_m I(t),
-\qquad \text{fire and reset if } V(t) \ge V_{\text{th}}
-$$
-
-with $\tau_m = R_m C_m \approx 10\text{–}20\ \text{ms}$. Integrating the linear ODE over a synaptic input current gives an exponentially-weighted sum of inputs — i.e. **a weighted sum followed by a threshold**, which is exactly the McCulloch–Pitts abstraction.
-
-**Synaptic plasticity** — the biological substrate of "weights":
-- **LTP / LTD** (long-term potentiation/depression) modify synaptic efficacy $w_{ij}$.
-- **STDP** (spike-timing-dependent plasticity):
-
-  $$
-  \Delta w =
-  \begin{cases}
-  A_{+}\exp(-\Delta t/\tau_{+}), & \Delta t = t_{\text{post}} - t_{\text{pre}} > 0 \quad (\text{potentiation})\\[4pt]
-  -A_{-}\exp(\Delta t/\tau_{-}), & \Delta t < 0 \quad (\text{depression})
-  \end{cases}
-  $$
-
-This is the *causal, temporally asymmetric* refinement of Hebb's rule.
-
-### 2.2 The artificial neuron (Perceptron unit / node)
+A biological neuron "fires" (sends an output signal) only when the total incoming signal crosses some threshold — otherwise it stays quiet. This "add up inputs, then decide to fire or not" behaviour is exactly what inspired the artificial neuron.
 
 ```
-    x₁ ──w₁────┐
-    x₂ ──w₂────┤        ┌──────────┐         ┌────────┐
-     ⋮    ⋮     ├──►  Σ │ v = wᵀx+b│  ──►  φ │  φ(v)  │ ──► y
-    xₙ ──wₙ────┤        └──────────┘         └────────┘
-     1 ──b ────┘        (induced local        (activation
-                          field / net input)     function)
+   Other neurons' axons
+         \   |   /
+          \  |  /            (dendrites collect signals)
+        ----[SOMA]----  if total signal > threshold --> fires along axon
+              |
+            (axon)
+              |
+        signal passed to next neuron's dendrites via a synapse
 ```
 
-$$
-\boxed{\;v_k = \sum_{j=1}^{n} w_{kj}x_j + b_k = \mathbf{w}_k^{\mathsf T}\mathbf{x} + b_k,\qquad y_k = \varphi(v_k)\;}
-$$
+### 2.2 Mapping biology to the artificial neuron
 
-$v_k$ is called the **induced local field** (Haykin) or *net input / pre-activation*.
+| Biological neuron | Artificial neuron |
+|---|---|
+| Dendrites (receiving signals) | Inputs x1, x2, …, xn |
+| Synapse strength | Weights w1, w2, …, wn |
+| Soma adding up signals | Weighted sum, z = Σ wi·xi + b |
+| Firing threshold | Activation function f(z) |
+| Axon (output signal) | Output y = f(z) |
 
-**Bias absorption trick.** Set $x_0 \equiv 1$, $w_{k0} \equiv b_k$, so $v_k = \tilde{\mathbf w}_k^{\mathsf T}\tilde{\mathbf x}$ with $\tilde{\mathbf x}\in\mathbb{R}^{n+1}$. This is used throughout the perceptron proof.
+This is only a loose analogy — real neurons are far more complex (they use electrical spikes, chemical signals, timing patterns, etc.), but the *core idea* of "combine inputs, then decide an output" survives directly into the artificial neuron.
 
-**Geometric meaning.** $v_k = 0$ defines a hyperplane $H$ with unit normal $\mathbf w/\|\mathbf w\|$ and signed distance from origin $-b/\|\mathbf w\|$. Distance of any point $\mathbf x_0$:
-$$
-d(\mathbf x_0, H) = \frac{|\mathbf w^{\mathsf T}\mathbf x_0 + b|}{\|\mathbf w\|_2}.
-$$
+### 2.3 Quick comparison table
 
-### 2.3 Biological vs Artificial — quantitative comparison
-
-| Aspect | Biological neuron | Artificial neuron |
+| Feature | Biological neuron | Artificial neuron |
 |---|---|---|
-| Signal | Spike train (all-or-none, ~1 ms) | Real-valued scalar |
-| Coding | Rate / temporal / population code | Analogue magnitude |
-| Speed | ~10⁻³ s per operation | ~10⁻⁹ s |
-| Count | ~8.6×10¹⁰ neurons, ~10¹⁴–10¹⁵ synapses | 10⁶–10¹² parameters |
-| Energy | ~20 W whole brain | ~10²–10⁶ W (GPU cluster) |
-| Learning | STDP, neuromodulation, local | Global gradient (backprop) — **not biologically plausible** (weight transport problem) |
-| Topology | Sparse, recurrent, small-world | Usually dense, layered, feedforward |
-| Precision | Stochastic, noisy, ~1–2 bits | FP32/FP16/INT8 deterministic |
+| Signal type | Electrical spikes | A single real number |
+| Speed | Slow (milliseconds) | Extremely fast (nanoseconds) |
+| Number of units | ~86 billion in the brain | A few hundred to billions in modern networks |
+| Learning | Connections strengthen/weaken based on activity | Weights updated using a learning algorithm (e.g. backpropagation) |
+| Power usage | ~20 watts for the entire brain | Can require huge power for large models (GPU clusters) |
 
-> **Interview point:** backprop requires the *transpose* of the forward weight matrix in the backward pass ("weight transport problem"). Biologically plausible surrogates: feedback alignment, target propagation, predictive coding, equilibrium propagation.
+**Takeaway for Lecture 2:** The artificial neuron is a deliberately simplified, mathematical version of a biological neuron — same basic idea (combine inputs, decide output), executed with plain arithmetic instead of biology.
 
 ---
 
-## 3. Types of Learning
+## Lecture 3: Types of Learning
 
-### 3.1 Taxonomy by supervision signal
+A neural network needs to be *trained* — that is, it needs a strategy for learning from data. There are four broad categories.
 
-```
-                          LEARNING
-                             │
-   ┌───────────────┬─────────┴─────────┬──────────────────┐
-Supervised     Unsupervised       Reinforcement      Hybrid / other
-(x, y)           (x only)          (s,a,r,s')      semi-, self-, active,
-                                                    transfer, meta-
-```
+### 3.1 Supervised Learning
 
-**(a) Supervised learning.** Data $\mathcal{D}=\{(x_i,y_i)\}_{i=1}^N \sim \mathcal{D}^N$. Learn $f:\mathcal X\to\mathcal Y$.
-- *Regression:* $\mathcal Y = \mathbb{R}^m$, typically MSE loss.
-- *Classification:* $\mathcal Y = \{1,\dots,C\}$, cross-entropy loss.
-- Error-correction: $\Delta w_{kj} = \eta\, e_k\, x_j$ where $e_k = d_k - y_k$ (delta / LMS rule).
+**Idea:** You give the model input-output *pairs* — i.e., for every input, you also tell it the correct answer (called the "label"). The model's job is to learn the mapping from input to output so well that it can predict the answer for new, unseen inputs.
 
-**(b) Unsupervised learning.** Only $\{x_i\}$. Objectives: density estimation $p(x)$, clustering, dimensionality reduction, generative modelling. Includes **Hebbian** and **competitive** learning (Units IV & V).
+**Example:** Show the network 10,000 photos, each labelled "cat" or "dog." It learns to predict the label for a brand-new photo.
 
-**(c) Reinforcement learning.** MDP $(\mathcal S,\mathcal A,P,r,\gamma)$; maximise
-$$
-J(\pi) = \mathbb{E}_\pi\!\left[\sum_{t=0}^{\infty}\gamma^{t} r_t\right],\qquad
-Q^\pi(s,a) = \mathbb{E}\big[r + \gamma Q^\pi(s',a')\big].
-$$
-Feedback is a **scalar, delayed, evaluative** signal — not a target vector.
+**Two flavours:**
+- **Classification** — output is a category (cat/dog, spam/not-spam).
+- **Regression** — output is a number (house price, temperature tomorrow).
 
-**(d) Semi-supervised / self-supervised.** $N_\ell \ll N_u$; exploit the cluster/manifold assumption, or invent a pretext task (masking, contrastive InfoNCE) so that supervision is generated from the data itself.
+### 3.2 Unsupervised Learning
 
-### 3.2 Taxonomy by learning *rule* (Haykin's five)
+**Idea:** You only give the model inputs — *no* labels. The model must find structure or patterns on its own, such as grouping similar items together.
 
-| # | Rule | Update | Character |
+**Example:** Given purchase histories of 10,000 customers (no labels at all), group them into customer "segments" that behave similarly. This is called **clustering**.
+
+### 3.3 Reinforcement Learning
+
+**Idea:** There's no fixed dataset of correct answers. Instead, an **agent** takes actions in an **environment** and receives a **reward** (or penalty) signal. Over time, it learns which actions lead to more reward.
+
+**Example:** A robot learns to walk by trying different movements — falling down gives a low reward, walking steadily gives a high reward.
+
+### 3.4 Hybrid Learning (Semi-supervised / Self-supervised)
+
+**Idea:** A mix of the above — usually a *small* amount of labelled data plus a *large* amount of unlabelled data, or the model creates its own "labels" from the data itself (e.g., hide part of a sentence and ask the model to predict the missing word).
+
+**Example:** Modern language models are first trained on huge amounts of unlabelled text (self-supervised), then fine-tuned on a small labelled dataset for a specific task.
+
+### 3.5 Quick comparison table
+
+| Type | Needs labels? | Goal | Example |
 |---|---|---|---|
-| 1 | **Error-correction** | $\Delta w_{kj}=\eta e_k x_j$ | Supervised, local, gradient of $\tfrac12 e^2$ |
-| 2 | **Hebbian** | $\Delta w_{kj}=\eta y_k x_j$ | Unsupervised, correlational, **unstable** (unbounded growth) |
-| 3 | **Competitive** | $\Delta w_{kj}=\eta(x_j-w_{kj})$ for winner only | Unsupervised, WTA, clustering |
-| 4 | **Boltzmann** | $\Delta w_{kj}=\eta(\rho_{kj}^{+}-\rho_{kj}^{-})$ | Stochastic, correlation difference (Unit III) |
-| 5 | **Memory-based** | store $\{(x_i,d_i)\}$, use local neighbourhood | Lazy learner (k-NN, RBF) |
+| Supervised | Yes | Predict known output for new input | Spam detection |
+| Unsupervised | No | Discover hidden structure | Customer segmentation |
+| Reinforcement | No (uses rewards instead) | Learn best actions over time | Game-playing agent, robot control |
+| Hybrid | Partially | Combine small labelled + large unlabelled data | Pre-trained language models |
 
-**Oja's rule** — stabilising Hebb by normalisation. Starting from
-$w(t+1) = \dfrac{w + \eta y x}{\|w + \eta y x\|}$ and expanding to first order in $\eta$:
-
-$$
-\boxed{\;\Delta w = \eta\, y\,(x - y\,w)\;}
-$$
-
-At convergence $\mathbb{E}[\Delta w]=0 \Rightarrow \mathbf{C}w = \lambda w$ with $\mathbf C=\mathbb E[xx^{\mathsf T}]$ and $\|w\|=1$: **a single Hebbian neuron with Oja's rule extracts the first principal component.** (Direct bridge to Unit IV.)
+**Takeaway for Lecture 3:** The "type of learning" describes what kind of feedback the model gets while training — an exact answer (supervised), no answer at all (unsupervised), a reward score (reinforcement), or a mix (hybrid).
 
 ---
 
-## 4. McCulloch–Pitts Neuron
+## Lecture 4: The McCulloch–Pitts (M-P) Neuron
 
-### 4.1 Definition (1943)
+### 4.1 The simplest possible neuron model
 
-A MP neuron has $n$ **excitatory** inputs $x_1..x_n \in\{0,1\}$, $m$ **inhibitory** inputs $z_1..z_m\in\{0,1\}$, and a threshold $\theta \in \mathbb{Z}$:
+Before the perceptron, in 1943, McCulloch and Pitts proposed the very first mathematical model of a neuron. It is deliberately very simple:
 
-$$
-y =
-\begin{cases}
-1, & \text{if } \displaystyle\sum_{i=1}^{n} x_i \ge \theta \;\text{ and }\; \sum_{j=1}^{m} z_j = 0\\[6pt]
-0, & \text{otherwise}
-\end{cases}
-$$
+- All inputs are **binary**: either 0 or 1.
+- Inputs are of two kinds: **excitatory** (they push the neuron toward firing) and **inhibitory** (if even one inhibitory input is 1, the neuron is forced to stay off, no matter what).
+- There's a fixed **threshold θ** (theta). The neuron fires (output = 1) only if the sum of excitatory inputs is ≥ θ AND no inhibitory input is active.
 
-**Absolute inhibition:** a *single* active inhibitory input vetoes firing regardless of excitation.
+**Rule, in words:**
+> If any inhibitory input is ON, output = 0 (always).
+> Otherwise, output = 1 if (sum of excitatory inputs) ≥ θ, else output = 0.
 
-**Constraints (why it is not a perceptron):**
-- weights are fixed at $+1$ (excitatory) / veto (inhibitory) — **no learning**;
-- inputs and output are strictly binary;
-- unit time delay per neuron ⇒ networks compute in discrete time steps.
+**Important limitation to remember:** the M-P neuron has **no learning** — the weights are always fixed at 1 for excitatory inputs, and there is no procedure to adjust θ from data. It's a *fixed logic circuit*, not a trainable model.
 
-### 4.2 Realising Boolean functions
+### 4.2 Realising simple logic gates — step by step
 
-Let $g(x)=\sum x_i$ and $y=f(g)= \mathbb{1}[g\ge\theta]$.
+**Example 1: AND gate** (output 1 only if both inputs are 1)
 
-| Function | Realisation | $\theta$ | Check |
-|---|---|---|---|
-| AND($x_1,x_2$) | 2 excitatory | $\theta=2$ | $1{+}1\ge2$ ✓ |
-| OR($x_1,x_2$) | 2 excitatory | $\theta=1$ | any one suffices |
-| NOT($x$) | 1 inhibitory, 0 excitatory | $\theta=0$ | $x{=}0\Rightarrow y{=}1$; $x{=}1\Rightarrow$ veto |
-| NOR | 2 inhibitory | $\theta=0$ | fires only if both 0 |
-| $x_1 \wedge \overline{x_2}$ | $x_1$ excit., $x_2$ inhib. | $\theta=1$ | ✓ |
-| NAND | $\overline{x_1}\vee\overline{x_2}$: two-layer | — | universal gate ⇒ **MP nets are Turing-complete for combinational logic** |
+Use two excitatory inputs, set θ = 2.
 
-### 4.3 XOR with MP neurons (two layers required)
+| x1 | x2 | Sum (x1+x2) | Is sum ≥ θ(=2)? | Output y |
+|---|---|---|---|---|
+| 0 | 0 | 0 | No | 0 |
+| 0 | 1 | 1 | No | 0 |
+| 1 | 0 | 1 | No | 0 |
+| 1 | 1 | 2 | Yes | 1 |
 
-$$
-x_1 \oplus x_2 = (x_1 \wedge \overline{x_2}) \;\vee\; (\overline{x_1} \wedge x_2)
-$$
+This exactly matches the AND truth table. ✓
+
+**Example 2: OR gate** (output 1 if at least one input is 1)
+
+Use two excitatory inputs, set θ = 1.
+
+| x1 | x2 | Sum | Is sum ≥ θ(=1)? | Output y |
+|---|---|---|---|---|
+| 0 | 0 | 0 | No | 0 |
+| 0 | 1 | 1 | Yes | 1 |
+| 1 | 0 | 1 | Yes | 1 |
+| 1 | 1 | 2 | Yes | 1 |
+
+Matches OR. ✓
+
+**Example 3: NOT gate** (output is the opposite of the input)
+
+Use one *inhibitory* input, θ = 0.
+
+| x (inhibitory) | Inhibitory input active? | Output y |
+|---|---|---|
+| 0 | No | 1 (fires, since θ=0 is satisfied and no inhibition) |
+| 1 | Yes | 0 (forced off by inhibition) |
+
+Matches NOT. ✓
+
+**Example 4: NOR gate** (output 1 only if both inputs are 0)
+
+Use two *inhibitory* inputs, θ = 0. If either input is 1, the inhibitory rule forces output to 0. If both are 0, no inhibition is active and θ = 0 is trivially satisfied, so output = 1.
+
+| x1 | x2 | Output y |
+|---|---|---|
+| 0 | 0 | 1 |
+| 0 | 1 | 0 |
+| 1 | 0 | 0 |
+| 1 | 1 | 0 |
+
+Matches NOR. ✓
+
+### 4.3 Why a *single* M-P neuron cannot do XOR
+
+XOR's truth table is: (0,0)→0, (0,1)→1, (1,0)→1, (1,1)→0.
+
+A single M-P neuron (or a single perceptron, as we'll see in Lecture 5) can only draw **one straight line** to separate 0s from 1s. If you plot the XOR points on a graph, the two "1" outputs sit on one diagonal and the two "0" outputs sit on the other diagonal — **no single straight line can separate them**. Try drawing it yourself: put a dot at (0,0)=0, (1,1)=0, and circles at (0,1)=1, (1,0)=1. Any line you draw will always have one dot and one circle on the same side.
+
+**Solution:** Use **two** M-P neurons in a first layer, and combine their outputs with a third M-P neuron. The trick is:
 
 ```
-        x₁ ──(+)──►┌───────┐
-                   │ N₁ θ=1│───(+)──►┌────────┐
-        x₂ ──(–)──►└───────┘         │ N₃ θ=1 │──► y = x₁ ⊕ x₂
-                                     │  (OR)  │
-        x₁ ──(–)──►┌───────┐         └────────┘
-                   │ N₂ θ=1│───(+)──►    ▲
-        x₂ ──(+)──►└───────┘  ───────────┘
-        (+) excitatory   (–) inhibitory
+XOR(x1, x2) = (x1 AND NOT x2) OR (NOT x1 AND x2)
 ```
 
-**Truth-table verification**
+- Neuron 1 computes "x1 AND NOT x2" (x1 excitatory, x2 inhibitory, θ=1)
+- Neuron 2 computes "NOT x1 AND x2" (x2 excitatory, x1 inhibitory, θ=1)
+- Neuron 3 computes "Neuron1 OR Neuron2" (both excitatory, θ=1)
 
-| $x_1$ | $x_2$ | $N_1$ (x₁ ∧ ¬x₂) | $N_2$ (¬x₁ ∧ x₂) | $y=N_1\vee N_2$ | XOR |
+**Verification table:**
+
+| x1 | x2 | N1 = x1 AND NOT x2 | N2 = NOT x1 AND x2 | y = N1 OR N2 | XOR (expected) |
 |---|---|---|---|---|---|
 | 0 | 0 | 0 | 0 | 0 | 0 ✓ |
-| 0 | 1 | 0 (veto) | 1 | 1 | 1 ✓ |
-| 1 | 0 | 1 | 0 (veto) | 1 | 1 ✓ |
-| 1 | 1 | 0 (veto) | 0 (veto) | 0 | 0 ✓ |
+| 0 | 1 | 0 | 1 | 1 | 1 ✓ |
+| 1 | 0 | 1 | 0 | 1 | 1 ✓ |
+| 1 | 1 | 0 | 0 | 0 | 0 ✓ |
 
-Latency: 2 time steps (one per layer).
+**This is the single most important idea in this unit:** a single neuron/layer can only separate data with one straight line, so problems like XOR that need a *bent/curved* boundary require **more than one layer**. This exact idea reappears as the motivation for Unit II (Multi-Layer Networks).
 
-### 4.4 Geometric view
-
-An MP neuron implements $\mathbb{1}\!\left[\mathbf 1^{\mathsf T}x \ge \theta\right]$ — a hyperplane with **normal fixed along $\mathbf 1$**; only the offset $\theta$ is free. Hence it can only realise **symmetric threshold (majority-type) functions**. The perceptron generalises this by letting the normal rotate.
-
-**Counting argument.** Number of Boolean functions of $n$ variables $=2^{2^n}$. Number of *linearly separable* ones, $LS(n)$:
-
-| $n$ | 1 | 2 | 3 | 4 | 5 |
-|---|---|---|---|---|---|
-| $2^{2^n}$ | 4 | 16 | 256 | 65 536 | 4.29×10⁹ |
-| $LS(n)$ | 4 | 14 | 104 | 1 882 | 94 572 |
-| fraction | 1.0 | 0.875 | 0.406 | 0.0287 | 2.2×10⁻⁵ |
-
-The fraction $\to 0$ **super-exponentially**: single-layer separability is a vanishingly rare property. This is the quantitative form of the Minsky–Papert critique.
+**Takeaway for Lecture 4:** The M-P neuron is a fixed (non-learning) binary threshold unit. Single gates like AND/OR/NOT are easy with one neuron; XOR needs two layers.
 
 ---
 
-## 5. The Perceptron
+## Lecture 5: The Perceptron
 
-### 5.1 Model
+### 5.1 From M-P neuron to Perceptron — what changed?
 
-$$
-y = \mathrm{sgn}(v) = \mathrm{sgn}\!\big(\mathbf w^{\mathsf T}\mathbf x + b\big),\qquad
-\mathrm{sgn}(v)=\begin{cases}+1 & v\ge 0\\ -1 & v<0\end{cases}
-$$
+The Perceptron (Rosenblatt, 1958) fixed the biggest weakness of the M-P neuron: **the weights can now be learned from data**, instead of being fixed at 1.
 
-Difference from MP: **real-valued adjustable weights**, real-valued inputs, a learning algorithm, and a bias.
-
-### 5.2 Perceptron learning algorithm (error-driven, online)
-
-> **Algorithm (Rosenblatt, 1958)**
-> 1. Initialise $\mathbf w(0) = \mathbf 0$ (or small random), $t \leftarrow 0$, choose $\eta>0$.
-> 2. For each epoch, for each sample $(\mathbf x_i, d_i)$, $d_i\in\{+1,-1\}$:
-> &nbsp;&nbsp;&nbsp;**a.** $y_i(t) = \mathrm{sgn}(\mathbf w(t)^{\mathsf T}\mathbf x_i)$   *(bias absorbed)*
-> &nbsp;&nbsp;&nbsp;**b.** If $y_i(t) \ne d_i$: $\; \mathbf w(t+1) = \mathbf w(t) + \eta\, d_i\, \mathbf x_i$; $\;t\leftarrow t+1$
-> &nbsp;&nbsp;&nbsp;**c.** Else $\mathbf w(t+1) = \mathbf w(t)$ *(no update on correct classification)*
-> 3. Repeat until an epoch passes with zero errors.
-
-Equivalent compact form: $\;\Delta\mathbf w = \tfrac{\eta}{2}\,(d_i - y_i)\,\mathbf x_i$, since $d_i-y_i \in\{0,\pm2\}$.
-
-**Why the update helps.** After an update on a misclassified $(\mathbf x_i,d_i)$:
-$$
-d_i\,\mathbf w(t+1)^{\mathsf T}\mathbf x_i = d_i\,\mathbf w(t)^{\mathsf T}\mathbf x_i + \eta\, d_i^2\|\mathbf x_i\|^2
-= \underbrace{d_i\,\mathbf w(t)^{\mathsf T}\mathbf x_i}_{<0} + \eta\|\mathbf x_i\|^2 ,
-$$
-i.e. the margin on that sample **strictly increases** by $\eta\|\mathbf x_i\|^2$.
-
-### 5.3 Perceptron criterion as a loss function
-
-The perceptron rule is (sub-)gradient descent on
-
-$$
-J_p(\mathbf w) = \sum_{i \in \mathcal M} -\,d_i\, \mathbf w^{\mathsf T}\mathbf x_i
-= \sum_{i=1}^{N}\max\!\big(0,\; -d_i \mathbf w^{\mathsf T}\mathbf x_i\big),
-$$
-
-$\mathcal M$ = misclassified set. Indeed $\nabla_{\mathbf w} J_p = -\sum_{i\in\mathcal M} d_i \mathbf x_i$, so $\mathbf w \leftarrow \mathbf w - \eta\nabla J_p$ reproduces step 2b.
-
-**Comparison of margin-based losses** (with $z = d\,\mathbf w^{\mathsf T}\mathbf x$):
-
-| Model | Loss $\ell(z)$ | Property |
+| | M-P Neuron | Perceptron |
 |---|---|---|
-| Perceptron | $\max(0,-z)$ | zero loss at $z=0^+$ → no margin guarantee |
-| SVM (hinge) | $\max(0, 1-z)$ | enforces margin ⇒ unique maximum-margin solution |
-| Logistic | $\log(1+e^{-z})$ | smooth, probabilistic |
-| ADALINE (LMS) | $\tfrac12 (d - \mathbf w^{\mathsf T}\mathbf x)^2$ | uses **linear** output, not $\mathrm{sgn}$ |
+| Inputs | Binary only | Real numbers allowed |
+| Weights | Fixed at 1 | Adjustable, learned from data |
+| Learning | None | Yes — a training algorithm |
+| Bias | Fixed threshold θ | Learnable bias b |
 
-### 5.4 Perceptron vs ADALINE (Widrow–Hoff)
+**Perceptron formula:**
 
-| | Perceptron | ADALINE |
+```
+z = w1x1 + w2x2 + ... + wnxn + b
+y = +1  if z ≥ 0
+y = -1  if z < 0
+```
+
+(Some textbooks use 0/1 instead of −1/+1 — the idea is identical, just a labelling choice. We will use +1/−1 here since it makes the learning rule simpler to write.)
+
+### 5.2 The Perceptron Learning Algorithm (in plain steps)
+
+We want to find weights w and bias b so that the perceptron's output y matches the desired/target output d for every training example.
+
+**Step-by-step procedure:**
+
+1. Start with small (often zero) initial weights and bias.
+2. Pick a learning rate η (eta) — a small positive number, e.g. 0.1 or 1, that controls how big each correction is.
+3. For each training example (x, d):
+   a. Compute the current output: y = sign(w·x + b)
+   b. If y is already correct (y = d), do nothing.
+   c. If y is wrong, correct the weights:
+      ```
+      w_new = w_old + η × d × x
+      b_new = b_old + η × d
+      ```
+4. Repeat step 3 for all examples, again and again (each full pass through all examples is called an **epoch**), until an entire epoch produces zero mistakes.
+
+**Why does this correction make sense?** If the network was wrong, moving the weights a little in the direction of d×x makes the output slightly more likely to be correct next time we see this input. If the network was already correct, we don't want to disturb it, so we do nothing.
+
+### 5.3 Fully worked example: Perceptron learning an AND gate
+
+**Data (using −1/+1 labels):** treat 0 as −1, and 1 as +1 for both inputs and the desired output.
+
+| x1 | x2 | Desired output d |
 |---|---|---|
-| Error computed on | $\mathrm{sgn}(v)$ (post-activation) | $v$ (pre-activation) |
-| Update | $\eta(d-y)x$, $y=\pm1$ | $\eta(d-v)x$ |
-| Loss | Perceptron criterion (piecewise linear) | MSE (quadratic, convex, smooth) |
-| Non-separable data | oscillates forever | converges to LMS optimum |
-| Stability bound | — | $0 < \eta < 2/\lambda_{\max}(\mathbf R)$, $\mathbf R=\mathbb E[xx^{\mathsf T}]$ |
-
----
-
-## 6. Perceptron Convergence Theorem (Full Proof)
-
-### 6.1 Statement (Novikoff, 1962)
-
-Let $\mathcal D=\{(\mathbf x_i,d_i)\}_{i=1}^N$, $d_i\in\{\pm1\}$, satisfy:
-1. **Boundedness:** $\|\mathbf x_i\| \le R$ for all $i$;
-2. **Linear separability with margin $\gamma>0$:** $\exists\, \mathbf w^\star$ with $\|\mathbf w^\star\|=1$ such that $d_i\,\mathbf w^{\star\mathsf T}\mathbf x_i \ge \gamma \;\forall i$.
-
-Then the perceptron algorithm started at $\mathbf w(0)=\mathbf 0$ with $\eta=1$ makes at most
-
-$$
-\boxed{\; k_{\max} \le \left(\frac{R}{\gamma}\right)^{2} \;}
-$$
-
-updates (mistakes), **independent of $N$ and of the dimension $n$**.
-
-### 6.2 Proof
-
-Let $\mathbf w_k$ be the weight vector *after* the $k$-th mistake, $\mathbf w_0=\mathbf 0$. Suppose the $k$-th mistake occurs on $(\mathbf x_{i_k}, d_{i_k})$, so $\mathbf w_k = \mathbf w_{k-1} + d_{i_k}\mathbf x_{i_k}$.
-
-**Step 1 — Lower bound (the projection onto $\mathbf w^\star$ grows linearly).**
-
-$$
-\mathbf w^{\star\mathsf T}\mathbf w_k = \mathbf w^{\star\mathsf T}\mathbf w_{k-1} + d_{i_k}\,\mathbf w^{\star\mathsf T}\mathbf x_{i_k}
-\;\ge\; \mathbf w^{\star\mathsf T}\mathbf w_{k-1} + \gamma .
-$$
-
-By induction from $\mathbf w^{\star\mathsf T}\mathbf w_0 = 0$:
-
-$$
-\mathbf w^{\star\mathsf T}\mathbf w_k \;\ge\; k\gamma. \quad (6.1)
-$$
-
-**Step 2 — Upper bound (the norm grows only as $\sqrt{k}$).**
-
-$$
-\|\mathbf w_k\|^2 = \|\mathbf w_{k-1}\|^2 + 2\,d_{i_k}\underbrace{\mathbf w_{k-1}^{\mathsf T}\mathbf x_{i_k}d_{i_k}/d_{i_k}}_{\text{see below}} + \|\mathbf x_{i_k}\|^2 .
-$$
-
-Precisely, $\|\mathbf w_k\|^2 = \|\mathbf w_{k-1}\|^2 + 2\,d_{i_k}\mathbf w_{k-1}^{\mathsf T}\mathbf x_{i_k} + d_{i_k}^2\|\mathbf x_{i_k}\|^2$. Because a **mistake** occurred, $d_{i_k}\mathbf w_{k-1}^{\mathsf T}\mathbf x_{i_k} \le 0$; and $d_{i_k}^2=1$, $\|\mathbf x_{i_k}\|^2\le R^2$. Hence
-
-$$
-\|\mathbf w_k\|^2 \le \|\mathbf w_{k-1}\|^2 + R^2 \;\;\Longrightarrow\;\; \|\mathbf w_k\|^2 \le kR^2 . \quad (6.2)
-$$
-
-**Step 3 — Combine via Cauchy–Schwarz.** Since $\|\mathbf w^\star\|=1$,
-
-$$
-k\gamma \;\overset{(6.1)}{\le}\; \mathbf w^{\star\mathsf T}\mathbf w_k \;\le\; \|\mathbf w^\star\|\,\|\mathbf w_k\| = \|\mathbf w_k\| \;\overset{(6.2)}{\le}\; \sqrt{k}\,R .
-$$
-
-Therefore $k\gamma \le \sqrt k R \Rightarrow \sqrt k \le R/\gamma \Rightarrow k \le R^2/\gamma^2$. $\blacksquare$
-
-### 6.3 Remarks (what examiners probe)
-
-- **Why $\eta$ does not matter (with $\mathbf w_0 = \mathbf 0$):** scaling $\eta$ scales every $\mathbf w_k$ by $\eta$; the sign of $\mathbf w^{\mathsf T}\mathbf x$ is unchanged, so the *sequence of mistakes is identical*.
-- The bound depends on $\gamma$, the **geometric margin**; if data are barely separable ($\gamma\to0$), the bound explodes — connecting directly to the SVM idea of *maximising* $\gamma$.
-- **Non-separable case:** the algorithm never terminates. Fixes: pocket algorithm (keep best-so-far weights), averaged perceptron, or the Freund–Schapire bound
-
-  $$
-  k \le \left(\frac{2(R + D)}{\gamma}\right)^{2}, \quad D = \sqrt{\textstyle\sum_i \xi_i^2},\;\; \xi_i = \max(0,\gamma - d_i\mathbf w^{\star\mathsf T}\mathbf x_i).
-  $$
-
-- The bound is **dimension-free** — a very early example of a margin-based generalisation guarantee.
-
-### 6.4 Limitations of the single-layer perceptron
-
-1. Cannot represent XOR / parity / connectedness (Minsky & Papert 1969).
-2. Solution is **not unique** and generally **not max-margin** (depends on data order & init).
-3. No probabilistic output.
-4. Fraction of learnable Boolean functions $\to 0$ (Section 4.4).
-5. Convergence time can be exponential in the input dimension for adversarial orderings even when separable (though *mistake count* is bounded).
-
----
-
-## 7. Capacity of a Perceptron — Cover's Counting Theorem
-
-**Theorem (Cover, 1965).** The number of *linearly separable dichotomies* of $N$ points in **general position** in $\mathbb R^{n}$ (through the origin) is
-
-$$
-C(N,n) = 2\sum_{k=0}^{n-1}\binom{N-1}{k}.
-$$
-
-**Consequences.**
-- If $N \le n$: $C(N,n) = 2^{N}$ — *all* dichotomies are realisable (data are shatterable).
-- The probability that a random dichotomy is separable, $P(N,n) = C(N,n)/2^N$, has a sharp transition at $N = 2n$: $P(2n, n) = 1/2$.
-- **Perceptron capacity $= 2n$** patterns; **VC dimension of a hyperplane in $\mathbb R^n$ (with bias) $= n+1$.**
-
-This theorem returns in **Unit V**, where it justifies why projecting into a *higher-dimensional* nonlinear feature space (RBF hidden layer) makes patterns linearly separable.
-
----
-
-## 8. Activation Functions
-
-### 8.1 Why nonlinearity is essential
-
-For a network of $L$ purely linear layers,
-$$
-f(x) = W_L(W_{L-1}(\cdots W_1 x)) = \underbrace{\left(\textstyle\prod_{\ell} W_\ell\right)}_{=\;W_{\text{eff}}} x ,
-$$
-which is a **single linear map**. Depth adds *zero* representational power without $\varphi$. (It does change optimisation dynamics — "deep linear networks" are a real research object — but the function class is unchanged.)
-
-### 8.2 Threshold / Heaviside / Step
-
-$$
-\varphi(v)=\begin{cases}1,& v\ge0\\ 0,& v<0\end{cases}
-\qquad\text{(bipolar variant: } \mathrm{sgn}(v)\in\{-1,+1\})
-$$
-
-$$
-\varphi'(v)=0 \;\;\forall v\ne0, \qquad \varphi'(0) \text{ undefined } (=\delta(v)\text{ distributionally}).
-$$
-
-**Verdict:** gradient is identically zero ⇒ **backpropagation impossible**. Historical only (MP, perceptron). Modern re-appearance: *straight-through estimator* in binarised networks, where the backward pass pretends $\varphi'(v)=\mathbb 1[|v|\le1]$.
-
-### 8.3 Logistic Sigmoid
-
-$$
-\sigma(v)=\frac{1}{1+e^{-av}} \in (0,1), \qquad a = \text{slope parameter (usually }1)
-$$
-
-**Derivative (derive it, don't memorise it):**
-
-$$
-\frac{d\sigma}{dv} = \frac{d}{dv}\left(1+e^{-av}\right)^{-1}
-= -\left(1+e^{-av}\right)^{-2}\cdot(-a e^{-av})
-= a\,\frac{e^{-av}}{(1+e^{-av})^{2}}
-$$
-$$
-= a\cdot \frac{1}{1+e^{-av}}\cdot\frac{e^{-av}}{1+e^{-av}}
-= \boxed{\,a\,\sigma(v)\big(1-\sigma(v)\,)\,}
-$$
-
-**Key numbers.** $\sigma(0)=0.5$, $\sigma'(0)=a/4 = 0.25$ (**maximum**), $\sigma'(\pm4)\approx0.0177$, $\sigma'(\pm 6)\approx 0.0025$.
-
-**Vanishing-gradient computation.** Through $L$ sigmoid layers the Jacobian magnitude is bounded by
-$$
-\left|\prod_{\ell=1}^{L}\sigma'(v_\ell)\,w_\ell\right| \le \left(\tfrac14 |w|_{\max}\right)^{L}.
-$$
-With $|w|\le1$, after $L=10$ layers the gradient is $\le 4^{-10} \approx 10^{-6}$. **This single line is the reason deep sigmoid nets failed pre-2006.**
-
-**Other issues:**
-- Output not zero-centred ⇒ all gradients w.r.t. a shared input have the same sign ⇒ **zig-zag** optimisation path.
-- $\exp$ is comparatively expensive.
-- **Still essential** as the output unit for binary classification (it is the inverse-logit, giving calibrated $P(y{=}1|x)$) and as gating in LSTM/GRU.
-
-**Probabilistic identity.** For a two-class problem with equal-covariance Gaussians,
-$$
-P(C_1|x) = \sigma\!\left(\log\frac{p(x|C_1)P(C_1)}{p(x|C_2)P(C_2)}\right) = \sigma(w^{\mathsf T}x+b).
-$$
-So sigmoid is not arbitrary — it is the **canonical link of the Bernoulli exponential family**.
-
-### 8.4 Hyperbolic Tangent
-
-$$
-\tanh(v)=\frac{e^{v}-e^{-v}}{e^{v}+e^{-v}} = \frac{1-e^{-2v}}{1+e^{-2v}} \in (-1,1)
-$$
-
-**Relation to sigmoid** (derive):
-$$
-\tanh(v) = 2\sigma(2v) - 1 \quad\Longleftrightarrow\quad \sigma(v) = \tfrac12\left(1+\tanh(v/2)\right).
-$$
-
-**Derivative:**
-$$
-\frac{d}{dv}\tanh(v) = \frac{(e^v+e^{-v})^2-(e^v-e^{-v})^2}{(e^v+e^{-v})^2} = 1-\tanh^2(v),\qquad \tanh'(0)=1 .
-$$
-
-**Advantage over sigmoid:** zero-centred output ⇒ zero-mean activations propagate ⇒ better-conditioned Hessian (LeCun's *Efficient BackProp*: recommended $\varphi(v)=1.7159\tanh(\tfrac23 v)$, which gives $\varphi(\pm1)=\pm1$ and $\varphi'$ maximal near the operating point). Still saturates.
-
-### 8.5 ReLU and its family
-
-$$
-\text{ReLU}(v)=\max(0,v),\qquad
-\text{ReLU}'(v)=\begin{cases}1,& v>0\\ 0,& v<0\\ \text{[0,1] (subgradient, take 0)},& v=0\end{cases}
-$$
-
-**Why it works:**
-- Gradient is exactly **1** on the active half-line ⇒ no attenuation ⇒ trains 10–100× faster (AlexNet).
-- Induces **sparse** codes (~50 % zeros at init) — biologically closer, computationally cheaper.
-- Piecewise linear ⇒ the network partitions input space into convex polytopes; the number of linear regions of a ReLU net with $L$ layers of width $w$ on $n$ inputs grows as $\Omega\!\left((w/n)^{n(L-1)}w^{n}\right)$ — **exponential in depth**, the formal statement of depth's power.
-
-**Problems:** not zero-centred; unbounded above; **dying ReLU** — if $v_k<0$ for *all* training inputs, $\partial \mathcal L/\partial w_k = 0$ permanently. Typically triggered by a large learning rate pushing $b$ very negative.
-
-**Variants:**
-
-| Name | Definition | Notes |
-|---|---|---|
-| Leaky ReLU | $\max(\alpha v, v)$, $\alpha{=}0.01$ | never dies |
-| PReLU | same, $\alpha$ **learned** | +1 param/channel |
-| ELU | $v$ if $v>0$ else $\alpha(e^{v}-1)$ | mean activation ≈0, smooth |
-| SELU | $\lambda\,\text{ELU}_\alpha(v)$, $\lambda{=}1.0507,\alpha{=}1.6733$ | *self-normalising* fixed point $(\mu,\sigma^2)=(0,1)$ |
-| Softplus | $\ln(1+e^{v})$ | smooth ReLU; $\frac{d}{dv}\text{softplus}=\sigma(v)$ |
-| GELU | $v\,\Phi(v)\approx 0.5v\!\left(1+\tanh\!\big[\sqrt{2/\pi}(v+0.044715v^3)\big]\right)$ | stochastic-regulariser view; Transformers |
-| Swish/SiLU | $v\,\sigma(\beta v)$ | found by NAS; smooth, non-monotone |
-| Mish | $v\tanh(\text{softplus}(v))$ | smoother loss landscape |
-
-**Weight initialisation is coupled to $\varphi$** (proved in Unit II):
-$$
-\text{Xavier/Glorot: } \mathrm{Var}(w)=\frac{2}{n_{\text{in}}+n_{\text{out}}} \;\;(\tanh);\qquad
-\text{He/Kaiming: } \mathrm{Var}(w)=\frac{2}{n_{\text{in}}} \;\;(\text{ReLU}).
-$$
-
-### 8.6 Softmax (vector-valued)
-
-$$
-\boxed{\; y_i = \text{softmax}(\mathbf v)_i = \frac{e^{v_i}}{\sum_{j=1}^{C} e^{v_j}},\qquad y_i>0,\;\; \sum_{i=1}^{C} y_i = 1 \;}
-$$
-
-**Numerical stability (mandatory in practice).** Since softmax is invariant to a constant shift, $\text{softmax}(\mathbf v) = \text{softmax}(\mathbf v - c)$, always use $c = \max_j v_j$:
-$$
-y_i = \frac{e^{v_i - v_{\max}}}{\sum_j e^{v_j - v_{\max}}}
-$$
-otherwise $e^{v}$ overflows for $v \gtrsim 709$ (FP64) or $v\gtrsim 88$ (FP32).
-
-**Jacobian derivation.** For $i = k$:
-$$
-\frac{\partial y_i}{\partial v_i}
-= \frac{e^{v_i}S - e^{v_i}e^{v_i}}{S^2},\quad S=\textstyle\sum_j e^{v_j}
-= y_i - y_i^2 = y_i(1-y_i).
-$$
-For $i \ne k$:
-$$
-\frac{\partial y_i}{\partial v_k} = \frac{0\cdot S - e^{v_i}e^{v_k}}{S^2} = -y_i y_k .
-$$
-Combined:
-$$
-\boxed{\;\frac{\partial y_i}{\partial v_k} = y_i(\delta_{ik} - y_k)
-\quad\Longleftrightarrow\quad
-\mathbf J = \mathrm{diag}(\mathbf y) - \mathbf y\mathbf y^{\mathsf T}\;}
-$$
-Note $\mathbf J$ is symmetric PSD, and $\mathbf J\mathbf 1 = \mathbf 0$ ⇒ **rank $C-1$** (consistent with the shift-invariance / one redundant degree of freedom).
-
-**The key simplification with cross-entropy.** With $\mathcal L = -\sum_i t_i\ln y_i$ and one-hot $\mathbf t$:
-$$
-\frac{\partial \mathcal L}{\partial v_k}
-= -\sum_i \frac{t_i}{y_i}\cdot y_i(\delta_{ik}-y_k)
-= -\sum_i t_i\delta_{ik} + y_k\sum_i t_i
-= \boxed{\,y_k - t_k\,}
-$$
-The messy Jacobian collapses to a plain error signal. (Same structure as sigmoid + binary cross-entropy — see Unit II §cost functions.)
-
-**Temperature.** $y_i(T) = e^{v_i/T}/\sum_j e^{v_j/T}$. As $T\to0^+$, softmax $\to$ argmax (one-hot); as $T\to\infty$, $\to$ uniform $1/C$. Used in knowledge distillation, RL exploration, and sampling from language models. Softmax is also the **Gibbs/Boltzmann distribution** with $v_i = -E_i$, $T$ = temperature — the exact link to Unit III.
-
-### 8.7 Comparison summary
-
-| $\varphi$ | Range | $\varphi'$ range | Zero-centred | Saturates | Cost | Typical use |
-|---|---|---|---|---|---|---|
-| Threshold | $\{0,1\}$ | 0 a.e. | No | — | trivial | MP, perceptron |
-| Sigmoid | $(0,1)$ | $(0,0.25]$ | No | both ends | high | binary output, gates |
-| Tanh | $(-1,1)$ | $(0,1]$ | **Yes** | both ends | high | RNN hidden, shallow nets |
-| ReLU | $[0,\infty)$ | $\{0,1\}$ | No | left only (dies) | **cheap** | default hidden |
-| Leaky/PReLU | $\mathbb R$ | $\{\alpha,1\}$ | ~Yes | no | cheap | deep CNN |
-| ELU/SELU | $(-\alpha,\infty)$ | $(0,1]$ | Yes | left soft | medium | self-normalising nets |
-| GELU/Swish | $\approx(-0.28,\infty)$ | smooth | ~Yes | no | medium | Transformers |
-| Softmax | $(0,1)^C$, sums 1 | Jacobian | — | yes | medium | multi-class output |
-
----
-
-## 9. Solved Numericals
-
-### N1. MP neuron — design a 3-input majority gate
-**Ask:** Realise $y=1$ iff at least 2 of $x_1,x_2,x_3$ are 1.
-**Solution:** All three excitatory, $\theta = 2$.
-Check: $(1,1,0)\to g=2\ge2\Rightarrow1$ ✓; $(1,0,0)\to g=1<2\Rightarrow0$ ✓; $(1,1,1)\to3\ge2\Rightarrow1$ ✓.
-As a perceptron: $w=(1,1,1)$, $b=-1.5$, $y=\mathbb 1[x_1+x_2+x_3-1.5\ge0]$.
-
----
-
-### N2. Prove XOR is not linearly separable
-Suppose $\exists (w_1,w_2,b)$ with $y=\mathbb 1[w_1x_1+w_2x_2+b\ge0]$ realising XOR. Then:
-
-| Pattern | Requirement | Inequality |
-|---|---|---|
-| $(0,0)\to0$ | $b<0$ | (i) |
-| $(0,1)\to1$ | $w_2+b\ge0$ | (ii) |
-| $(1,0)\to1$ | $w_1+b\ge0$ | (iii) |
-| $(1,1)\to0$ | $w_1+w_2+b<0$ | (iv) |
-
-Add (ii)+(iii): $w_1+w_2+2b \ge 0 \Rightarrow w_1+w_2 \ge -2b$.
-From (iv): $w_1+w_2 < -b$.
-Hence $-2b \le w_1+w_2 < -b \Rightarrow -2b < -b \Rightarrow -b<0 \Rightarrow b>0$, contradicting (i). ∎
-
----
-
-### N3. Perceptron training — full iteration table (AND gate, bipolar)
-
-Data (bipolar, bias absorbed as $x_0=1$): $\eta=1$, $\mathbf w(0)=(0,0,0)$ with $\mathbf w=(b,w_1,w_2)$.
-
-| $x_0$ | $x_1$ | $x_2$ | $d$ |
-|---|---|---|---|
-| 1 | −1 | −1 | −1 |
-| 1 | −1 | +1 | −1 |
-| 1 | +1 | −1 | −1 |
-| 1 | +1 | +1 | +1 |
-
-Rule: $y = \mathrm{sgn}(\mathbf w^{\mathsf T}\mathbf x)$ with $\mathrm{sgn}(0)=+1$; on error $\mathbf w \leftarrow \mathbf w + d\,\mathbf x$.
+| −1 | −1 | −1 |
+| −1 | +1 | −1 |
+| +1 | −1 | −1 |
+| +1 | +1 | +1 |
+
+Start with w1 = 0, w2 = 0, b = 0, learning rate η = 1.
 
 **Epoch 1**
 
-| Step | $\mathbf x$ | $\mathbf w$ before | $v$ | $y$ | $d$ | Update? | $\mathbf w$ after |
-|---|---|---|---|---|---|---|---|
-| 1 | (1,−1,−1) | (0,0,0) | 0 | +1 | −1 | ✔ $-\mathbf x$ | (−1, 1, 1) |
-| 2 | (1,−1,+1) | (−1,1,1) | −1−1+1=−1 | −1 | −1 | ✘ | (−1, 1, 1) |
-| 3 | (1,+1,−1) | (−1,1,1) | −1+1−1=−1 | −1 | −1 | ✘ | (−1, 1, 1) |
-| 4 | (1,+1,+1) | (−1,1,1) | −1+1+1=+1 | +1 | +1 | ✘ | (−1, 1, 1) |
+*Example 1: x=(−1,−1), d=−1*
+- z = 0(−1) + 0(−1) + 0 = 0
+- sign(0) is taken as +1 (by convention) → y = +1
+- y ≠ d (predicted +1, wanted −1) → update:
+  - w1 = 0 + 1×(−1)×(−1) = 1
+  - w2 = 0 + 1×(−1)×(−1) = 1
+  - b = 0 + 1×(−1) = −1
 
-**Epoch 2** — recheck pattern 1: $v = -1+(-1)+(-1) = -3 \Rightarrow y=-1=d$ ✓. Patterns 2–4 unchanged ✓.
-**Converged in 1 update.** Final: $b=-1,\;w_1=w_2=1$; decision line $x_1+x_2 = 1$.
+*Example 2: x=(−1,+1), d=−1*
+- z = 1(−1) + 1(1) + (−1) = −1 + 1 − 1 = −1
+- y = sign(−1) = −1
+- y = d ✓ → no update
 
-*Sanity check with the theorem:* $R = \max\|\mathbf x\| = \sqrt3$. A valid $\mathbf w^\star$ is $\tfrac{1}{\sqrt3}(-1,1,1)$, giving $\gamma = \min_i d_i\mathbf w^{\star\mathsf T}\mathbf x_i = 1/\sqrt3$. Bound: $k \le R^2/\gamma^2 = 3/(1/3) = 9$. Observed $k=1 \le 9$ ✓.
+*Example 3: x=(+1,−1), d=−1*
+- z = 1(1) + 1(−1) + (−1) = 1 − 1 − 1 = −1
+- y = −1
+- y = d ✓ → no update
 
----
+*Example 4: x=(+1,+1), d=+1*
+- z = 1(1) + 1(1) + (−1) = 1 + 1 − 1 = 1
+- y = sign(1) = +1
+- y = d ✓ → no update
 
-### N4. Perceptron with a non-trivial 2-D dataset
+**End of Epoch 1:** w1 = 1, w2 = 1, b = −1. Only 1 mistake was made.
 
-$\mathcal D$: $\;\mathbf x_1=(1,1)^{\mathsf T},d{=}{+}1$; $\mathbf x_2=(2,-2)^{\mathsf T},d{=}{-}1$; $\mathbf x_3=(-1,2)^{\mathsf T},d{=}{+}1$; $\mathbf x_4=(-2,1)^{\mathsf T},d{=}{-}1$.
-Augmented $\tilde{\mathbf x}=(1,x_1,x_2)$, $\eta=1$, $\mathbf w_0=(0,0,0)$.
+**Epoch 2 (re-check all 4 examples with the new weights):**
 
-| It. | Sample | $\tilde{\mathbf x}$ | $\mathbf w$ | $v$ | $y$ | $d$ | New $\mathbf w$ |
-|---|---|---|---|---|---|---|---|
-| 1 | 1 | (1,1,1) | (0,0,0) | 0 | +1 | +1 | (0,0,0) |
-| 2 | 2 | (1,2,−2) | (0,0,0) | 0 | +1 | −1 | (−1,−2,2) |
-| 3 | 3 | (1,−1,2) | (−1,−2,2) | −1+2+4=5 | +1 | +1 | (−1,−2,2) |
-| 4 | 4 | (1,−2,1) | (−1,−2,2) | −1+4+2=5 | +1 | −1 | (−2,−4,1) |
-| 5 | 1 | (1,1,1) | (−2,−4,1) | −2−4+1=−5 | −1 | +1 | (−1,−3,2) |
-| 6 | 2 | (1,2,−2) | (−1,−3,2) | −1−6−4=−11 | −1 | −1 | — |
-| 7 | 3 | (1,−1,2) | (−1,−3,2) | −1+3+4=6 | +1 | +1 | — |
-| 8 | 4 | (1,−2,1) | (−1,−3,2) | −1+6+2=7 | +1 | −1 | (−2,−5,1) |
-| 9 | 1 | (1,1,1) | (−2,−5,1) | −2−5+1=−6 | −1 | +1 | (−1,−4,2) |
-| 10 | 2 | (1,2,−2) | (−1,−4,2) | −1−8−4=−13 | −1 | −1 | — |
-| 11 | 3 | (1,−1,2) | (−1,−4,2) | −1+4+4=7 | +1 | +1 | — |
-| 12 | 4 | (1,−2,1) | (−1,−4,2) | −1+8+2=9 | +1 | −1 | (−2,−6,1) |
-| 13 | 1 | (1,1,1) | (−2,−6,1) | −7 | −1 | +1 | (−1,−5,2) |
-| 14 | 2 | — | (−1,−5,2) | −1−10−4=−15 | −1 | −1 | — |
-| 15 | 3 | — | (−1,−5,2) | −1+5+4=8 | +1 | +1 | — |
-| 16 | 4 | — | (−1,−5,2) | −1+10+2=11 | +1 | −1 | (−2,−7,1) |
+- x=(−1,−1): z = −1−1−1 = −3 → y=−1 = d ✓
+- x=(−1,+1): z = −1+1−1 = −1 → y=−1 = d ✓
+- x=(+1,−1): z = 1−1−1 = −1 → y=−1 = d ✓
+- x=(+1,+1): z = 1+1−1 = 1 → y=+1 = d ✓
 
-**Observation:** the algorithm keeps cycling. Check separability: we need $b+w_1+w_2\ge0$, $b+2w_1-2w_2<0$, $b-w_1+2w_2\ge0$, $b-2w_1+w_2<0$. Adding (1)+(3): $2b+3w_2 \ge -0$ … a full LP shows the system **is** feasible (e.g. $w=(0,-1,1)$: $v_1=0\ \checkmark$, $v_2=-4<0\ \checkmark$, $v_3=3\ge0\ \checkmark$, $v_4=3$ ✗). Try $w=(0,-2,1)$: $v_1=-1$ ✗.
-The point of this example: **not every "nice-looking" set is separable**, and the perceptron then oscillates indefinitely — motivating the pocket algorithm and, structurally, the multi-layer network of Unit II.
+**Zero mistakes in Epoch 2 → training is complete!**
 
----
+**Final learned rule:** y = sign(x1 + x2 − 1). This is a straight line x1 + x2 = 1 separating the "AND = +1" point from the other three points — exactly what we expect, since AND is a simple, linearly separable problem.
 
-### N5. Activation-function arithmetic
+### 5.4 Does the Perceptron always converge?
 
-Given $\mathbf x = (0.5,\,-1.0,\,2.0)^{\mathsf T}$, $\mathbf w=(0.4,\,-0.6,\,0.3)^{\mathsf T}$, $b=-0.2$.
+**Perceptron Convergence Theorem (stated simply, no proof needed at this level):** If the data can be separated by a straight line (i.e., it is "linearly separable"), the perceptron learning algorithm is *guaranteed* to find such a line in a finite number of corrections, no matter where you start.
 
-$$v = 0.4(0.5) + (-0.6)(-1.0) + 0.3(2.0) - 0.2 = 0.2+0.6+0.6-0.2 = \mathbf{1.2}$$
+**But:** if the data is *not* linearly separable (like XOR), the algorithm will keep making corrections forever and never settle down — it will "oscillate." This is exactly the practical demonstration of the same limitation we saw with the M-P neuron in Lecture 4: **one neuron with one straight-line boundary is not enough for every problem.**
 
-| $\varphi$ | $\varphi(1.2)$ | $\varphi'(1.2)$ |
-|---|---|---|
-| Threshold | 1 | 0 |
-| Sigmoid | $1/(1+e^{-1.2}) = 1/(1+0.30119) = 0.76852$ | $0.76852(1-0.76852)=0.17789$ |
-| Tanh | $(e^{1.2}-e^{-1.2})/(e^{1.2}+e^{-1.2}) = (3.32012-0.30119)/(3.62131) = 0.83365$ | $1-0.83365^2 = 0.30502$ |
-| ReLU | 1.2 | 1 |
-| Leaky (0.01) | 1.2 | 1 |
-| ELU ($\alpha{=}1$) | 1.2 | 1 |
-| Softplus | $\ln(1+e^{1.2}) = \ln(4.32012)=1.46333$ | $\sigma(1.2)=0.76852$ |
-| Swish ($\beta{=}1$) | $1.2\times0.76852 = 0.92222$ | $\sigma+v\sigma(1-\sigma) = 0.76852+1.2(0.17789)=0.98199$ |
-
-*Consistency check:* $\tanh(1.2) = 2\sigma(2.4)-1 = 2(0.916827)-1 = 0.833655$ ✓.
+**Takeaway for Lecture 5:** The perceptron is a trainable version of the threshold neuron. Its learning rule nudges weights toward correcting mistakes, and it is guaranteed to succeed *only* when the data is linearly separable.
 
 ---
 
-### N6. Softmax and its Jacobian
+## Lecture 6: Activation Functions
 
-Logits $\mathbf v = (2.0,\,1.0,\,0.1)$.
-Shift by $v_{\max}=2.0$: $(0,\,-1.0,\,-1.9)$.
-$e^{0}=1$, $e^{-1}=0.367879$, $e^{-1.9}=0.149569$. Sum $S = 1.517448$.
+### 6.1 Why do we even need an activation function?
 
-$$
-\mathbf y = (0.659001,\;0.242433,\;0.098566),\qquad \textstyle\sum y_i = 1.000 \;✓
-$$
+If we simply used z = w·x + b as the final output (no activation function at all), then stacking many layers would collapse into just one big linear function — you would gain nothing by adding layers! The activation function introduces **non-linearity**, which is what allows multi-layer networks to model complicated, curved decision boundaries (like the XOR case from Lecture 4).
 
-Jacobian $\mathbf J = \mathrm{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}$:
+### 6.2 The five activation functions in this syllabus
 
-$$
-\mathbf J=
-\begin{pmatrix}
-0.659001(1-0.659001) & -0.659001(0.242433) & -0.659001(0.098566)\\
--0.242433(0.659001) & 0.242433(1-0.242433) & -0.242433(0.098566)\\
--0.098566(0.659001) & -0.098566(0.242433) & 0.098566(1-0.098566)
-\end{pmatrix}
-$$
-$$
-=\begin{pmatrix}
-\;\;0.224669 & -0.159773 & -0.064956\\
--0.159773 & \;\;0.183656 & -0.023897\\
--0.064956 & -0.023897 & \;\;0.088849
-\end{pmatrix}
-$$
+**1. Threshold (Step) function** — the one we used for M-P neuron / perceptron.
+```
+f(z) = 1 if z ≥ 0
+f(z) = 0 (or -1) if z < 0
+```
+- Output is strictly 0/1 (or −1/+1) — hard decision, no in-between.
+- Problem: it has no useful "slope" (the derivative is 0 everywhere except at z=0, where it's undefined), so it cannot be used with gradient-based learning algorithms like backpropagation (Unit II). Good only for simple, single-layer models.
 
-Row sums: $0.224669-0.159773-0.064956 = 0.000$ ✓ (confirms $\mathbf J\mathbf 1=\mathbf 0$, rank $\le 2$).
+**2. Sigmoid function**
+```
+f(z) = 1 / (1 + e^(-z))
+```
+- Output is always between 0 and 1 — can be read as a "probability."
+- Smooth and differentiable everywhere, so gradient-based learning works.
+- Its derivative has a very convenient shortcut: f'(z) = f(z) × (1 − f(z))
+- Downside: for very large positive or negative z, the curve becomes almost flat, so the gradient becomes tiny ("vanishing gradient") and learning slows down.
 
-If the true class is $t = 1$ (one-hot $(1,0,0)$):
-$$\mathcal L = -\ln(0.659001) = 0.41703,\qquad \frac{\partial\mathcal L}{\partial \mathbf v} = \mathbf y - \mathbf t = (-0.340999,\;0.242433,\;0.098566).$$
-Gradient sums to zero — softmax redistributes probability mass rather than creating it.
+**3. Tanh (hyperbolic tangent) function**
+```
+f(z) = (e^z - e^(-z)) / (e^z + e^(-z))
+```
+- Output is between −1 and +1.
+- Like sigmoid, but centred around 0, which often helps the network learn faster.
+- Derivative: f'(z) = 1 − f(z)²
+- Still suffers from vanishing gradients for large |z|, though usually less severely than sigmoid.
 
-**Temperature effect:** with $T=0.5$, $\mathbf v/T = (4,2,0.2)$ ⇒ $\mathbf y \approx (0.8668,0.1173,0.0159)$ (sharper). With $T=5$, $\mathbf v/T=(0.4,0.2,0.02)$ ⇒ $\mathbf y \approx (0.3752,0.3072,0.3176)$ (flatter).
+**4. ReLU (Rectified Linear Unit)**
+```
+f(z) = z    if z > 0
+f(z) = 0    if z ≤ 0
+```
+- Extremely simple and fast to compute.
+- Derivative is 1 for z > 0 and 0 for z ≤ 0 — no vanishing-gradient problem for positive inputs, which is why ReLU is the default choice in most modern deep networks.
+- Downside: if a neuron's input is always negative, it "dies" (always outputs 0 and never updates again) — this is called the "dying ReLU" problem.
+
+**5. Softmax function** (used only in the output layer, for multi-class classification)
+```
+For outputs z1, z2, ..., zk:
+softmax(zi) = e^(zi) / (e^(z1) + e^(z2) + ... + e^(zk))
+```
+- Converts a list of raw scores into a list of probabilities that all add up to 1.
+- Used when the network must choose *one* class out of many (e.g., "which digit, 0–9, is this?").
+
+### 6.3 Quick comparison table
+
+| Activation | Output range | Smooth (usable with gradient learning)? | Typical use |
+|---|---|---|---|
+| Threshold | {0,1} or {−1,+1} | No | Simple perceptron only |
+| Sigmoid | (0, 1) | Yes | Binary classification output, older hidden layers |
+| Tanh | (−1, 1) | Yes | Hidden layers (better than sigmoid, still can vanish) |
+| ReLU | [0, ∞) | Yes (except exactly at 0) | Default choice for hidden layers today |
+| Softmax | (0,1), all outputs sum to 1 | Yes | Output layer for multi-class classification |
+
+### 6.4 Step-by-step numerical example
+
+Let's compute all activation outputs for a single neuron with:
+```
+x1 = 0.5, x2 = -1.0, x3 = 2.0
+w1 = 0.4, w2 = -0.6, w3 = 0.3
+b = -0.2
+```
+
+**Step 1 — Compute z (the weighted sum):**
+```
+z = (0.4 × 0.5) + (-0.6 × -1.0) + (0.3 × 2.0) + (-0.2)
+z = 0.20 + 0.60 + 0.60 - 0.20
+z = 1.2
+```
+
+**Step 2 — Apply each activation function to z = 1.2:**
+
+*Threshold:* Since z = 1.2 ≥ 0, output = 1.
+
+*Sigmoid:*
+```
+f(1.2) = 1 / (1 + e^(-1.2))
+e^(-1.2) ≈ 0.3012
+f(1.2) = 1 / 1.3012 ≈ 0.7685
+```
+
+*Tanh:*
+```
+e^(1.2) ≈ 3.3201
+e^(-1.2) ≈ 0.3012
+f(1.2) = (3.3201 - 0.3012) / (3.3201 + 0.3012) = 3.0189 / 3.6213 ≈ 0.8337
+```
+
+*ReLU:* Since z = 1.2 > 0, output = z = 1.2
+
+**Step 3 — Softmax example (needs more than one output, so let's use 3 raw scores):**
+
+Suppose the output layer produces three raw scores: z1 = 2.0, z2 = 1.0, z3 = 0.1
+
+```
+e^(2.0) ≈ 7.389
+e^(1.0) ≈ 2.718
+e^(0.1) ≈ 1.105
+Sum = 7.389 + 2.718 + 1.105 = 11.212
+
+softmax(z1) = 7.389 / 11.212 ≈ 0.659
+softmax(z2) = 2.718 / 11.212 ≈ 0.242
+softmax(z3) = 1.105 / 11.212 ≈ 0.099
+
+Check: 0.659 + 0.242 + 0.099 = 1.000 ✓
+```
+
+This tells us: the model is 65.9% confident in class 1, 24.2% confident in class 2, and 9.9% confident in class 3.
+
+### 6.5 Unit summary
+
+- A neural network is built from simple neurons (weighted sum + activation function) arranged in layers.
+- The artificial neuron loosely copies how a biological neuron combines and fires signals.
+- Networks learn using one of: supervised, unsupervised, reinforcement, or hybrid learning.
+- The M-P neuron is the earliest, non-learning threshold model; it can realise simple gates but not XOR with a single unit.
+- The perceptron adds learnable weights and a training rule, and is guaranteed to converge only on linearly separable data.
+- Activation functions (threshold, sigmoid, tanh, ReLU, softmax) add non-linearity, which is essential for solving problems that a single straight line cannot solve.
+
+### 6.6 Practice questions for self-study
+
+1. Design an M-P neuron for the NAND gate. Verify your design against the full truth table.
+2. Run the perceptron learning algorithm by hand for the OR gate, starting from zero weights, and show all epochs until convergence.
+3. For a neuron with x=(1, 2), w=(0.5, -0.3), b=0.1, compute z, and then compute the sigmoid, tanh, and ReLU outputs step by step.
+4. Explain in your own words why a single perceptron cannot learn XOR, using the "straight line" argument.
 
 ---
 
-### N7. Vanishing gradient — quantitative
-A 12-layer network with sigmoid activations, all weights $w=0.9$, all pre-activations near $0$ (so $\sigma'\approx0.25$). The gradient reaching layer 1 is scaled by
-
-$$
-\prod_{\ell=1}^{11}\sigma'(v_\ell)\,w_\ell \approx (0.25\times0.9)^{11} = 0.225^{11} = 1.05\times10^{-7}.
-$$
-
-With ReLU ($\varphi'=1$ when active): $(1\times0.9)^{11}=0.3138$ — **six orders of magnitude larger**.
-If instead $w = 1.5$ with ReLU: $1.5^{11} = 86.5$ ⇒ **exploding** gradient, motivating gradient clipping and careful initialisation (Unit II).
-
----
-
-### N8. Oja's rule reaches the principal eigenvector
-Let $\mathbf C = \begin{pmatrix}4 & 1\\ 1& 3\end{pmatrix}$.
-Eigenvalues: $\lambda^2-7\lambda+11=0 \Rightarrow \lambda = (7\pm\sqrt5)/2 = 4.61803,\,2.38197$.
-Principal eigenvector for $\lambda_1=4.61803$: $(4-\lambda_1)u_1 + u_2 = 0 \Rightarrow u_2 = 0.61803\,u_1$, normalised $\mathbf u_1 = (0.85065,\,0.52573)^{\mathsf T}$.
-Oja's rule $\Delta w = \eta y(x - yw)$ with $y=w^{\mathsf T}x$ converges in expectation to $\pm\mathbf u_1$ — i.e. a **single linear neuron performs PCA** (Unit IV).
-
----
-
-## 10. Viva / Exam Pointers
-
-**Likely long questions**
-1. State and *prove* the perceptron convergence theorem; discuss what happens when data are not separable.
-2. Show that XOR is not linearly separable and realise it with McCulloch–Pitts neurons.
-3. Derive $\sigma'$, $\tanh'$ and the softmax Jacobian; explain the vanishing-gradient problem quantitatively.
-4. Compare biological and artificial neurons; explain STDP and the weight-transport objection to backprop.
-5. Explain Cover's theorem and the capacity $2n$ of a perceptron.
-
-**Traps**
-- $\sigma'(v) = \sigma(1-\sigma)$ is in terms of the **output**, not the input — this is why frameworks cache activations.
-- Softmax Jacobian is a **matrix**, not a scalar; only when composed with cross-entropy does it collapse to $y-t$.
-- The perceptron bound limits **mistakes**, not epochs or wall-clock time.
-- MP neuron has **no learning** — do not write a "MP learning rule".
-- "Sigmoid squashes to (0,1)" — open interval; it never *attains* 0 or 1 (hence $\log$ is safe but can underflow in FP32).
-
-**One-line formula sheet**
-
-$$
-v=\mathbf w^{\mathsf T}\mathbf x + b \quad|\quad
-\sigma' = \sigma(1-\sigma) \quad|\quad
-\tanh' = 1-\tanh^2 \quad|\quad
-\tanh(v)=2\sigma(2v)-1
-$$
-$$
-\mathbf J_{\text{softmax}} = \mathrm{diag}(\mathbf y)-\mathbf y\mathbf y^{\mathsf T}\quad|\quad
-\partial\mathcal L_{\text{CE}}/\partial \mathbf v = \mathbf y - \mathbf t \quad|\quad
-k_{\max}\le (R/\gamma)^2 \quad|\quad
-C(N,n)=2\!\sum_{k=0}^{n-1}\!\binom{N-1}{k}
-$$
-
----
-
-*End of Unit I — proceed to [Unit II: Feedforward Neural Networks](./Unit-2.md)*
+*End of Unit I — proceed to Unit II: Feedforward Neural Networks*
